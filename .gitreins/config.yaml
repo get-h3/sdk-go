@@ -6,16 +6,17 @@ guards:
     enabled: true
     severity: block
   build:
-    enabled: false
+    enabled: true
   lint:
-    enabled: false
+    enabled: true
   tests:
-    enabled: false
+    enabled: true
   dead_code:
     enabled: false
 
 test:
   mode: full
+  test_command: "go test ./... -count=1 -short"
 
 commit:
   require_guard_pass: true
