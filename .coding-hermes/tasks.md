@@ -18,16 +18,15 @@
 - [x] ⚠️ Module path: go.mod is `github.com/get-h3/sdk-go` (correct — matches actual repo). Spec S04 §2 uses `github.com/coding-herms/h3-sdk-go`. Repo name is canonical — spec needs update. Non-blocking for implementation.
 - [x] ✅ DuckBrain seeded: 3 entries (protocol audit, type mapping, module path).
 
-## [ ] CORE-S01 — Implement protocol types from JSON Schema (PHASE 2)
-Files: `protocol/types.go`, `protocol/types_test.go`
-- [ ] ProcessRequest, Message, Attachment, Identity, Context (per schemas/v1/*.json ↔ S04 §2.2)
-- [ ] Decision + DecisionType enum (6 types: tool_call, llm_call, text, wait, delegate, end)
-- [ ] All sub-types: ToolCall, LLMCall, TextResp, Wait, Delegate, End
-- [ ] ResultRequest, CancelRequest, HealthResponse (per S02 spec)
-- [ ] HistoryEntry, Tool, Model, SessionState, Config (per common.json)
-- [ ] JSON tags on ALL fields matching wire format (snake_case)
-- [ ] `protocol/validate.go` — Validate() methods on ProcessRequest and Decision
-- [ ] Tests: JSON marshal/unmarshal round-trips for each type
+## [x] CORE-S01 — Implement protocol types from JSON Schema (PHASE 2) (commit: f295056)
+- [x] ProcessRequest, Message, Attachment, Identity, Context (per schemas/v1/*.json ↔ S04 §2.2)
+- [x] Decision + DecisionType enum (6 types: tool_call, llm_call, text, wait, delegate, end)
+- [x] All sub-types: ToolCall, LLMCall, TextResp, Wait, Delegate, End
+- [x] ResultRequest, CancelRequest, HealthResponse (per S02 spec)
+- [x] HistoryEntry, Tool, Model, SessionState, Config (per common.json)
+- [x] JSON tags on ALL fields matching wire format (snake_case)
+- [x] `protocol/validate.go` — Validate() methods on ProcessRequest and Decision
+- [x] Tests: JSON marshal/unmarshal round-trips for each type (18 tests, all pass)
 
 ## [ ] CORE-S02 — Implement harness interface + HTTP handler (PHASE 3)
 Files: `harness/harness.go`, `harness/middleware.go`, `harness/harness_test.go`
