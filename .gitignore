@@ -2,8 +2,10 @@
 /bin/
 *.exe
 
-# Hilo — local cache (rebuildable)
-.vfs/
+# Hilo — local cache files (rebuildable)
+.vfs/graph/graph.db
+.vfs/graph/graph.db.wal
+.vfs/graph/.last_warm
 
 # IDE
 .idea/

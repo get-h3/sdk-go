@@ -10,13 +10,13 @@
 - [x] Gap: Module path is `github.com/get-h3/sdk-go`; spec (S04 §2) uses `github.com/coding-herms/h3-sdk-go` — verify which is correct
 - [x] Sister SDKs: Python (scaffold), TypeScript (partial) — Go SDK on par
 
-## [ ] SPEC — Audit API surface vs H3 spec, confirm 1:1 alignment (PHASE 1)
-- [ ] Verify protocol types match JSON Schema v1 (schemas/v1/*.json) — 100% coverage
-- [ ] Verify harness interface matches S04 §2.3 (Harness: 5 methods)
-- [ ] Verify HTTP endpoints match S01 §4: /v1/health, /v1/process, /v1/result, /v1/cancel, /v1/sessions/:id
-- [ ] Verify user-visible API from AGENTS.md quickstart matches spec
-- [ ] Resolve module path: get-h3 vs coding-herms — confirm canonical name
-- [ ] Seed DuckBrain `/project/sdk-go/` with spec decisions
+## [x] SPEC — Audit API surface vs H3 spec, confirm 1:1 alignment (PHASE 1) (commit: TBD)
+- [x] ✅ Protocol types vs JSON Schema v1: 100% coverage confirmed — 13 schema files → 22 Go types (ProcessRequest, Decision + 6 DecisionType enum values, ToolCall, LLMCall, TextResp, Wait, Delegate, End, ResultRequest, CancelRequest, HealthResponse, Message, Attachment, Identity, HistoryEntry, Tool, Model, SessionState, Config, Context, SessionResponse, ErrorResponse). All required fields, types, enums map 1:1.
+- [x] ✅ Harness interface vs S04 §2.3: 5 methods confirmed — OnProcess, OnResult, OnCancel, OnSessionTerminate, Health. Return types and signatures match spec exactly.
+- [x] ✅ HTTP endpoints: 5 handler registrations → 6 endpoints (GET /v1/health, POST /v1/process, POST /v1/result, POST /v1/cancel, GET+DELETE /v1/sessions/:id). sessionHandler covers both GET and DELETE on /v1/sessions/.
+- [x] ✅ AGENTS.md quickstart: matches spec (NewHTTPServer → http.Handler, Decision types). Minor bug: OnProcess uses `req *protocol.ProcessRequest` but `protocol` package not imported in the quickstart snippet.
+- [x] ⚠️ Module path: go.mod is `github.com/get-h3/sdk-go` (correct — matches actual repo). Spec S04 §2 uses `github.com/coding-herms/h3-sdk-go`. Repo name is canonical — spec needs update. Non-blocking for implementation.
+- [x] ✅ DuckBrain seeded: 3 entries (protocol audit, type mapping, module path).
 
 ## [ ] CORE-S01 — Implement protocol types from JSON Schema (PHASE 2)
 Files: `protocol/types.go`, `protocol/types_test.go`
