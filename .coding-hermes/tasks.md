@@ -57,10 +57,10 @@ Files: `.github/workflows/ci.yml`, `.gitreins/config.yaml`, `.gitleaks.toml`
 - [x] GitReins guard in CI (gitreins-guard job)
 - [x] Matrix: go 1.22, 1.23
 
-## [ ] LINT-S01 — Fix pre-existing golangci-lint issues (PHASE 7)
+## [x] LINT-S01 — Fix pre-existing golangci-lint issues (PHASE 7) (commit: b90ed96)
 Files: `harness/harness_test.go`, `testbed/mock_hermes.go`, `testbed/mock_hermes_test.go`
-- [ ] harness/harness_test.go:335,404,462 — check `http.Post` return values (errcheck)
-- [ ] testbed/mock_hermes.go:110 — remove unused `decisionID` method (unused)
-- [ ] testbed/mock_hermes_test.go:13 — remove unused `onProcessResponses` field (unused)
-- [ ] `go test ./... -count=1 -short` still passes
-- [ ] CI Lint job passes
+- [x] harness/harness_test.go:335,404,462 — check `http.Post` return values (errcheck)
+- [x] testbed/mock_hermes.go:110 — remove unused `decisionID` method (unused)
+- [x] testbed/mock_hermes_test.go:13 — remove unused `onProcessResponses` field (unused)
+- [x] `go test ./... -count=1 -short` still passes
+- [x] CI Lint job passes
