@@ -44,11 +44,11 @@ Files: `testbed/mock_hermes.go`, `testbed/assertions.go`, `testbed/mock_hermes_t
 - [x] Assertion helpers: AssertDecisionType, AssertTextContent, AssertEndReason, AssertNoError, AssertDecisionValid
 - [x] Tests: 13 tests — SendMessage, SendResult, SendCancel, TerminateSession, WithEchoHarness, Health, DefaultTools, DefaultModels, DefaultContext, QuickIdentity, QuickMessage, LastDecisionAndError, LastError
 
-## [ ] DOC-S01 — Create README.md + flesh out examples (PHASE 5)
+## [x] DOC-S01 — Create README.md + flesh out examples (PHASE 5) (commit: 3bd1702)
 Files: `README.md`, `examples/echo/main.go`, `examples/minimal/main.go`
-- [ ] README.md: badges, install, quickstart, package structure, development
-- [ ] examples/minimal: EchoHarness (matching S04 §2.5 and AGENTS.md quickstart)
-- [ ] examples/echo: Echo + return text from OnResult
+- [x] README.md: badges, install, quickstart, package structure, development
+- [x] examples/minimal: EchoHarness (matching S04 §2.5 and AGENTS.md quickstart)
+- [x] examples/echo: Echo + return text from OnResult
 
 ## [ ] CI-S01 — Set up GitHub Actions (PHASE 6)
 Files: `.github/workflows/ci.yml`
