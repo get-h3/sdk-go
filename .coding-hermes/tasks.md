@@ -28,14 +28,14 @@
 - [x] `protocol/validate.go` — Validate() methods on ProcessRequest and Decision
 - [x] Tests: JSON marshal/unmarshal round-trips for each type (18 tests, all pass)
 
-## [ ] CORE-S02 — Implement harness interface + HTTP handler (PHASE 3)
+## [x] CORE-S02 — Implement harness interface + HTTP handler (PHASE 3) (commit: 4fc3e5b)
 Files: `harness/harness.go`, `harness/middleware.go`, `harness/harness_test.go`
-- [ ] Harness interface (5 methods per S04 §2.3)
-- [ ] NewHTTPServer(h Harness) → http.Handler (S04 §2.4)
-- [ ] Endpoints: /v1/health, /v1/process, /v1/result, /v1/cancel, /v1/sessions/{id}
-- [ ] JSON request unmarshalling + Decision validation + JSON response
-- [ ] Middleware: request logging, panic recovery, timeout (per S04 §2.4)
-- [ ] Tests: HTTP handler test with mock harness
+- [x] Harness interface (5 methods per S04 §2.3)
+- [x] NewHTTPServer(h Harness) → http.Handler (S04 §2.4)
+- [x] Endpoints: /v1/health, /v1/process, /v1/result, /v1/cancel, /v1/sessions/{id}
+- [x] JSON request unmarshalling + Decision validation + JSON response
+- [x] Middleware: request logging, panic recovery, timeout (per S04 §2.4)
+- [x] Tests: HTTP handler test with mock harness (14 tests, all pass)
 
 ## [ ] CORE-S03 — Implement testbed (MockHermes + assertions) (PHASE 4)
 Files: `testbed/mock_hermes.go`, `testbed/assertions.go`, `testbed/*_test.go`
