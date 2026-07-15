@@ -56,3 +56,11 @@ Files: `.github/workflows/ci.yml`, `.gitreins/config.yaml`, `.gitleaks.toml`
 - [x] golangci-lint or staticcheck (golangci-lint-action@v6)
 - [x] GitReins guard in CI (gitreins-guard job)
 - [x] Matrix: go 1.22, 1.23
+
+## [ ] LINT-S01 — Fix pre-existing golangci-lint issues (PHASE 7)
+Files: `harness/harness_test.go`, `testbed/mock_hermes.go`, `testbed/mock_hermes_test.go`
+- [ ] harness/harness_test.go:335,404,462 — check `http.Post` return values (errcheck)
+- [ ] testbed/mock_hermes.go:110 — remove unused `decisionID` method (unused)
+- [ ] testbed/mock_hermes_test.go:13 — remove unused `onProcessResponses` field (unused)
+- [ ] `go test ./... -count=1 -short` still passes
+- [ ] CI Lint job passes
