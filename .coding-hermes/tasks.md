@@ -37,12 +37,12 @@ Files: `harness/harness.go`, `harness/middleware.go`, `harness/harness_test.go`
 - [x] Middleware: request logging, panic recovery, timeout (per S04 §2.4)
 - [x] Tests: HTTP handler test with mock harness (14 tests, all pass)
 
-## [ ] CORE-S03 — Implement testbed (MockHermes + assertions) (PHASE 4)
-Files: `testbed/mock_hermes.go`, `testbed/assertions.go`, `testbed/*_test.go`
-- [ ] MockHermes with SendMessage() and SendResult() (per S04 §6)
-- [ ] Default tools/models/context helpers
-- [ ] Assertion helpers: AssertDecisionType, AssertTextContent, AssertEndReason
-- [ ] Tests: verify MockHermes works with a simple harness
+## [x] CORE-S03 — Implement testbed (MockHermes + assertions) (PHASE 4) (commit: c6aba84)
+Files: `testbed/mock_hermes.go`, `testbed/assertions.go`, `testbed/mock_hermes_test.go`
+- [x] MockHermes with SendMessage(), SendResult(), SendCancel(), TerminateSession()
+- [x] Default helpers: DefaultTools(), DefaultModels(), DefaultContext(), QuickIdentity(), QuickMessage()
+- [x] Assertion helpers: AssertDecisionType, AssertTextContent, AssertEndReason, AssertNoError, AssertDecisionValid
+- [x] Tests: 13 tests — SendMessage, SendResult, SendCancel, TerminateSession, WithEchoHarness, Health, DefaultTools, DefaultModels, DefaultContext, QuickIdentity, QuickMessage, LastDecisionAndError, LastError
 
 ## [ ] DOC-S01 — Create README.md + flesh out examples (PHASE 5)
 Files: `README.md`, `examples/echo/main.go`, `examples/minimal/main.go`
