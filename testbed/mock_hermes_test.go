@@ -10,7 +10,6 @@ import (
 
 // echoHarness is a simple test harness that echoes back the user message.
 type echoHarness struct {
-	onProcessResponses []*protocol.Decision
 	processCallCount   int
 	resultCallCount    int
 	cancelCallCount    int
