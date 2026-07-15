@@ -1,0 +1,14 @@
+# GitLeaks config for H3 Go SDK
+# Whitelist test fixtures, specs, docs, and example configs.
+
+[allowlist]
+  description = "Allow test fixtures, documentation, and example keys"
+
+  paths = [
+    '''.*_test\.go$''',
+    '''examples/.*''',
+    '''specs/.*''',
+    '''docs/.*''',
+    '''\.gitreins/.*''',
+    '''\.coding-hermes/.*''',
+  ]
