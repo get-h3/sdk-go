@@ -50,9 +50,9 @@ Files: `README.md`, `examples/echo/main.go`, `examples/minimal/main.go`
 - [x] examples/minimal: EchoHarness (matching S04 §2.5 and AGENTS.md quickstart)
 - [x] examples/echo: Echo + return text from OnResult
 
-## [ ] CI-S01 — Set up GitHub Actions (PHASE 6)
-Files: `.github/workflows/ci.yml`
-- [ ] go build + go vet + go test on push/PR
-- [ ] golangci-lint or staticcheck
-- [ ] GitReins guard in CI
-- [ ] Matrix: go 1.22, 1.23
+## [x] CI-S01 — Set up GitHub Actions (PHASE 6) (commit: 6a2e0c9)
+Files: `.github/workflows/ci.yml`, `.gitreins/config.yaml`, `.gitleaks.toml`
+- [x] go build + go vet + go test on push/PR
+- [x] golangci-lint or staticcheck (golangci-lint-action@v6)
+- [x] GitReins guard in CI (gitreins-guard job)
+- [x] Matrix: go 1.22, 1.23
