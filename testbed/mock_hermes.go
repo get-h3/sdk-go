@@ -3,7 +3,6 @@
 package testbed
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/get-h3/sdk-go/harness"
@@ -104,11 +103,6 @@ func (m *MockHermes) TerminateSession(sessionID string) error {
 	err := m.Harness.OnSessionTerminate(sessionID)
 	m.LastError = err
 	return err
-}
-
-// decisionID returns a unique decision ID for tracking.
-func (m *MockHermes) decisionID() string {
-	return fmt.Sprintf("mock-decision-%d", m.decisionCount)
 }
 
 // DefaultTools returns a standard set of test tools.

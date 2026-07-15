@@ -332,7 +332,10 @@ func TestResultEndpoint(t *testing.T) {
 			"session_state": {"turn_count": 0, "total_tool_calls": 0, "total_llm_calls": 0, "cost_so_far": 0, "started_at": "2026-07-14T00:00:00Z"}
 		}
 	}`
-	http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody))
+	_, err := http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody))
+	if err != nil {
+		t.Fatalf("POST /v1/process (setup): %v", err)
+	}
 
 	resultBody := `{
 		"session_id": "sess-r1",
@@ -401,7 +404,10 @@ func TestGetSessionEndpoint(t *testing.T) {
 			"session_state": {"turn_count": 0, "total_tool_calls": 0, "total_llm_calls": 0, "cost_so_far": 0, "started_at": "2026-07-14T00:00:00Z"}
 		}
 	}`
-	http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody))
+	_, err := http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody))
+	if err != nil {
+		t.Fatalf("POST /v1/process (setup): %v", err)
+	}
 
 	resp, err := http.Get(ts.URL + "/v1/sessions/sess-g1")
 	if err != nil {
@@ -459,7 +465,10 @@ func TestDeleteSessionEndpoint(t *testing.T) {
 			"session_state": {"turn_count": 0, "total_tool_calls": 0, "total_llm_calls": 0, "cost_so_far": 0, "started_at": "2026-07-14T00:00:00Z"}
 		}
 	}`
-	http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody))
+	_, err := http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody))
+	if err != nil {
+		t.Fatalf("POST /v1/process (setup): %v", err)
+	}
 
 	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/v1/sessions/sess-d1", nil)
 	if err != nil {
