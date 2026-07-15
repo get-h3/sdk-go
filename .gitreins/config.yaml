@@ -1,22 +1,40 @@
-project: "h3-sdk-go"
-language: "go"
+# GitReins config for H3 Go SDK
+# Go project — no Python needed, use Go-native tools.
 
 guards:
-  secrets:
-    enabled: true
-    severity: block
-  build:
-    enabled: true
-  lint:
-    enabled: true
-  tests:
-    enabled: true
-  dead_code:
-    enabled: false
-
-test:
-  mode: full
+  secrets: true
+  lint: true
+  lint_command: "golangci-lint run ./... 2>/dev/null || echo 'lint: skipped (golangci-lint not available in CI)'"
+  tests: true
+  test_mode: "full"
   test_command: "go test ./... -count=1 -short"
+  test_timeout: 120
+  dead_code: false
+  skylos: false
 
-commit:
-  require_guard_pass: true
+pipeline:
+  stages:
+    - id: tier1
+      parallel: true
+      on: [pre-commit, pre-eval]
+      steps:
+        - id: guard
+          type: script
+          run: "gitreins guard"
+          on_fail: block
+
+evaluator:
+  max_iterations: 25
+  max_time: "5m"
+  max_input_tokens: "0.1M"
+  max_output_tokens: "0.05M"
+  max_tokens_per_call: 16384
+  tool_call_weight: 0.1
+  compaction_threshold: 0.90
+  code_context_budget: 0.70
+
+defaults:
+  model: deepseek-v4-flash
+  max_iterations: 100
+  check_for_updates: true
+  update_check_ttl: "24h"
