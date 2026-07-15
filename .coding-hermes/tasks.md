@@ -64,3 +64,19 @@ Files: `harness/harness_test.go`, `testbed/mock_hermes.go`, `testbed/mock_hermes
 - [x] testbed/mock_hermes_test.go:13 — remove unused `onProcessResponses` field (unused)
 - [x] `go test ./... -count=1 -short` still passes
 - [x] CI Lint job passes
+
+## [ ] TEST — Add testbed/conformance_test.go + fixtures/ per S04 §6 (h3-test compliance) (commit: TBD)
+Files: `testbed/conformance_test.go`, `testbed/fixtures/`
+- [ ] Create conformance test harness implementing full agent loop (tool_call → result → text → end)
+- [ ] h3-test from get-h3/shim currently scores 14/43 against echo harness — need proper test harness
+- [ ] Add fixtures/ directory with sample JSON request/response payloads
+- [ ] Tests: verify h3-test reaches ≥ 40/43 PASS
+
+## [ ] EXAMPLE — Add examples/consensus/ reference integration per S04 §2.1 (commit: TBD)
+Files: `examples/consensus/main.go`
+- [ ] Implement ConsensusHarness — demonstrates H3 + Consensus for multi-model deliberation
+- [ ] Wire up real tool calls (not just echo text) showing the full agent loop
+- [ ] Go build + vet clean
+
+---
+*Discovery sweep 2026-07-15 — Tick after LINT-S01. Board was empty. Found 2 gaps vs S04 spec.*
