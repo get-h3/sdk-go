@@ -210,7 +210,7 @@ type Result struct {
 	Type        ResultType `json:"type"`
 	ToolName    string     `json:"tool_name,omitempty"`
 	Data        any        `json:"data,omitempty"`
-	DurationMs  int        `json:"duration_ms,omitempty"`
+	DurationMs  float64    `json:"duration_ms,omitempty"`
 	Success     bool       `json:"success"`
 }
 

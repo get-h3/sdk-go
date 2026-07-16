@@ -227,7 +227,7 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 		e.Status = "cancelled"
 	})
 
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // getSessionHandler handles GET /v1/sessions/{id}.
