@@ -325,7 +325,7 @@ func TestResultRequestRoundTrip(t *testing.T) {
 		t.Error("result.success should be true")
 	}
 	if parsed.Result.DurationMs != 150 {
-		t.Errorf("duration_ms = %d", parsed.Result.DurationMs)
+		t.Errorf("duration_ms = %.0f", parsed.Result.DurationMs)
 	}
 }
 
@@ -486,6 +486,7 @@ func TestProcessRequestValidate_MissingSessionID(t *testing.T) {
 }
 
 func TestProcessRequestValidate_MissingMessageContent(t *testing.T) {
+	// Empty content is valid — harness handles it gracefully (per h3-test §5.4).
 	r := ProcessRequest{
 		SessionID: "sess-001",
 		Message:   Message{Role: "user", Timestamp: "2026-01-01T00:00:00Z"},
@@ -495,8 +496,8 @@ func TestProcessRequestValidate_MissingMessageContent(t *testing.T) {
 			SessionState: SessionState{StartedAt: "2026-01-01T00:00:00Z"},
 		},
 	}
-	if err := r.Validate(); err == nil {
-		t.Error("expected error for missing message.content")
+	if err := r.Validate(); err != nil {
+		t.Errorf("empty content should be valid: %v", err)
 	}
 }
 

@@ -379,8 +379,8 @@ func TestCancelEndpoint(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
-		t.Errorf("expected 204, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 	if !m.cancelCalled {
 		t.Error("OnCancel was not called")

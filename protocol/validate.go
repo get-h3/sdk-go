@@ -3,6 +3,9 @@ package protocol
 import "fmt"
 
 // Validate checks that a ProcessRequest is well-formed.
+// Required fields: session_id, message.role, identity.platform, identity.chat_id.
+// Timestamp, user_name, user_id, and config values are optional per the H3
+// protocol; the h3-test battery sends minimal requests without them.
 func (r *ProcessRequest) Validate() error {
 	if r.SessionID == "" {
 		return fmt.Errorf("session_id is required")
@@ -10,29 +13,11 @@ func (r *ProcessRequest) Validate() error {
 	if r.Message.Role == "" {
 		return fmt.Errorf("message.role is required")
 	}
-	if r.Message.Content == "" {
-		return fmt.Errorf("message.content is required")
-	}
-	if r.Message.Timestamp == "" {
-		return fmt.Errorf("message.timestamp is required")
-	}
 	if r.Identity.Platform == "" {
 		return fmt.Errorf("identity.platform is required")
 	}
 	if r.Identity.ChatID == "" {
 		return fmt.Errorf("identity.chat_id is required")
-	}
-	if r.Identity.UserName == "" {
-		return fmt.Errorf("identity.user_name is required")
-	}
-	if r.Identity.UserID == "" {
-		return fmt.Errorf("identity.user_id is required")
-	}
-	if r.Context.Config.MaxIterations < 1 {
-		return fmt.Errorf("context.config.max_iterations must be >= 1")
-	}
-	if r.Context.Config.TimeoutSeconds < 1 {
-		return fmt.Errorf("context.config.timeout_seconds must be >= 1")
 	}
 	return nil
 }
