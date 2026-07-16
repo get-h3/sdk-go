@@ -1,0 +1,52 @@
+{
+  "session_id": "sess-conformance-001",
+  "message": {
+    "role": "user",
+    "content": "echo hello",
+    "timestamp": "2026-07-16T12:00:00Z"
+  },
+  "identity": {
+    "platform": "test",
+    "chat_id": "test-chat-001",
+    "user_name": "conformance-tester",
+    "user_id": "user-001"
+  },
+  "context": {
+    "history": [],
+    "tools": [
+      {
+        "name": "echo",
+        "description": "Echoes the input back",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "string",
+              "description": "Input to echo"
+            }
+          },
+          "required": ["input"]
+        }
+      }
+    ],
+    "models": [
+      {
+        "name": "test-model",
+        "provider": "test-provider",
+        "context_window": 128000,
+        "supports_tool_calling": true
+      }
+    ],
+    "config": {
+      "max_iterations": 10,
+      "timeout_seconds": 30
+    },
+    "session_state": {
+      "turn_count": 0,
+      "total_tool_calls": 0,
+      "total_llm_calls": 0,
+      "cost_so_far": 0,
+      "started_at": "2026-07-16T12:00:00Z"
+    }
+  }
+}
