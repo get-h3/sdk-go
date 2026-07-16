@@ -73,11 +73,11 @@ Files: `testbed/conformance.go`, `testbed/conformance_test.go`, `testbed/fixture
 - [x] Tests: h3-test reaches 42/43 PASS (≥ 40/43 target) — remaining 1 failure is history-preservation (non-blocking)
 - [x] Fixed protocol validation: relaxed ProcessRequest.Validate(), DurationMs int→float64, cancel 204→200
 
-## [ ] EXAMPLE — Add examples/consensus/ reference integration per S04 §2.1 (commit: TBD)
+## [x] EXAMPLE — Add examples/consensus/ reference integration per S04 §2.1 (commit: 157d915)
 Files: `examples/consensus/main.go`
-- [ ] Implement ConsensusHarness — demonstrates H3 + Consensus for multi-model deliberation
-- [ ] Wire up real tool calls (not just echo text) showing the full agent loop
-- [ ] Go build + vet clean
+- [x] Implement ConsensusHarness — demonstrates H3 + Consensus for multi-model deliberation
+- [x] Wire up real tool calls (not just echo text) showing the full agent loop
+- [x] Go build + vet clean
 
 ---
 *Discovery sweep 2026-07-15 — Tick after LINT-S01. Board was empty. Found 2 gaps vs S04 spec.*
