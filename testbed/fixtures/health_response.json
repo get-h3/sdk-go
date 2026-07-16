@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "transport": "rest",
+  "protocol_version": "1.0",
+  "uptime_seconds": 0,
+  "active_sessions": 0,
+  "capabilities": [
+    "tool_call",
+    "llm_call",
+    "text",
+    "wait",
+    "delegate",
+    "end"
+  ]
+}

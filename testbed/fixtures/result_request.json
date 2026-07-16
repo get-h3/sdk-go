@@ -1,0 +1,13 @@
+{
+  "session_id": "sess-conformance-001",
+  "decision_id": "dec-process",
+  "result": {
+    "type": "tool_result",
+    "tool_name": "echo",
+    "success": true,
+    "data": {
+      "output": "hello"
+    },
+    "duration_ms": 100
+  }
+}
