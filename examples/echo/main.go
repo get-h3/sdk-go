@@ -20,8 +20,9 @@ type EchoHarness struct {
 func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
 	content := fmt.Sprintf("Echo: %s", req.Message.Content)
 	return &protocol.Decision{
-		Decision: protocol.DecisionText,
-		Text:     &protocol.TextResp{Content: content, Finished: true},
+		Decision:   protocol.DecisionText,
+		DecisionID: "echo-001",
+		Text:       &protocol.TextResp{Content: content, Finished: true},
 	}, nil
 }
 
@@ -30,14 +31,16 @@ func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision,
 	h.responseCount++
 	if h.responseCount >= 2 {
 		return &protocol.Decision{
-			Decision: protocol.DecisionEnd,
-			End:      &protocol.End{Reason: protocol.EndTaskComplete, Summary: "Echo conversation complete"},
+			Decision:   protocol.DecisionEnd,
+			DecisionID: "echo-end",
+			End:        &protocol.End{Reason: protocol.EndTaskComplete, Summary: "Echo conversation complete"},
 		}, nil
 	}
 	content := fmt.Sprintf("Result received: %s", req.DecisionID)
 	return &protocol.Decision{
-		Decision: protocol.DecisionText,
-		Text:     &protocol.TextResp{Content: content, Finished: true},
+		Decision:   protocol.DecisionText,
+		DecisionID: "echo-002",
+		Text:       &protocol.TextResp{Content: content, Finished: true},
 	}, nil
 }
 
