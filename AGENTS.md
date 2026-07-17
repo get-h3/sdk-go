@@ -16,6 +16,7 @@ package main
 import (
     "net/http"
     "github.com/get-h3/sdk-go/harness"
+    "github.com/get-h3/sdk-go/protocol"
 )
 
 type MyHarness struct{}
