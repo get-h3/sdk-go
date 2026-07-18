@@ -97,3 +97,20 @@ Files: `examples/consensus/main.go`
 - [x] Root cause: golangci-lint v1.64.8 binary built with go1.24 refuses to lint go1.26.5 projects
 - [x] Push pending CI verification
 - [x] P5-02 commit hash corrected: f1b0349
+
+---
+*Discovery sweep 2026-07-18 — Tick after History-field fix (5644a44). Board complete, CI green, all tests pass. Found 3 minor gaps.*
+
+## [ ] LINT-S02 — Fix remaining golangci-lint errcheck issues (2 harness_test.go, 4 examples)
+- harness/harness_test.go:96,124 — `defer resp.Body.Close()` unchecked ×2
+- examples/conformance, echo, minimal — `http.ListenAndServe` unchecked ×3
+- examples/consensus/main.go:153 — `resp.Body.Close` unchecked
+- examples/consensus/main.go:177 — `executeTool` unused
+- Priority: P3 (cosmetic, not blocking)
+- Weight: 1
+
+## [ ] COV-S01 — Improve protocol coverage (45% → 70%)
+- protocol/validate.go Validate() at 66.7% and 38.7% — error paths uncovered
+- Add tests for: invalid DecisionType, missing required fields, malformed JSON
+- Priority: P3 (SDK is functionally complete, coverage gap is in edge cases)
+- Weight: 2
