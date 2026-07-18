@@ -81,3 +81,11 @@ Files: `examples/consensus/main.go`
 
 ---
 *Discovery sweep 2026-07-15 — Tick after LINT-S01. Board was empty. Found 2 gaps vs S04 spec.*
+
+## [ ] P5-02 — Sync-protocol workflow: regenerate → test → release
+- [ ] Create `.github/workflows/sync-protocol.yml` — triggered by repository_dispatch from protocol repo
+- [ ] Steps: checkout → `go mod tidy` → regenerate types from latest protocol JSON Schema → `go test ./... -count=1` → tag and release
+- [ ] Ensure `go generate` path references latest protocol schemas
+- [ ] Test: protocol dispatches → Go SDK regenerates and releases automatically
+
+**Spec ref:** S08 (Cross-Repo Release Pipeline)
