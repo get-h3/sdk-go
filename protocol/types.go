@@ -1,5 +1,7 @@
 // Package protocol defines the H3 wire-format types.
 // Generated from get-h3/protocol JSON Schema v1.
+//
+//go:generate go run github.com/get-h3/sdk-go/cmd/gen-types schemas/v1/*.json
 package protocol
 
 // DecisionType enumerates the six H3 decision types.
