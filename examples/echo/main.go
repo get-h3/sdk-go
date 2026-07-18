@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/get-h3/sdk-go/harness"
 	"github.com/get-h3/sdk-go/protocol"
@@ -14,22 +15,36 @@ import (
 // EchoHarness echoes the user message back and tracks results.
 type EchoHarness struct {
 	responseCount int
+	streaming     bool // true when the current session is streaming text
 }
 
 // OnProcess echoes the user's message content.
 func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
 	content := fmt.Sprintf("Echo: %s", req.Message.Content)
+
+	// Track streaming mode: messages containing "do not finish" trigger unfinished text
+	h.streaming = strings.Contains(req.Message.Content, "do not finish")
+	finished := !h.streaming
+
+	// Echo conversation history from context
+	history := make([]protocol.HistoryEntry, len(req.Context.History))
+	for i, entry := range req.Context.History {
+		history[i] = protocol.HistoryEntry{Role: entry.Role, Content: entry.Content}
+	}
+
 	return &protocol.Decision{
 		Decision:   protocol.DecisionText,
 		DecisionID: "echo-001",
-		Text:       &protocol.TextResp{Content: content, Finished: true},
+		Text:       &protocol.TextResp{Content: content, Finished: finished},
+		History:    history,
 	}, nil
 }
 
 // OnResult reports the received decision ID, then ends the session.
 func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
 	h.responseCount++
-	if h.responseCount >= 2 {
+	// End after 2 results for normal mode, stay in stream for streaming
+	if !h.streaming && h.responseCount >= 2 {
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,
 			DecisionID: "echo-end",
@@ -37,10 +52,11 @@ func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision,
 		}, nil
 	}
 	content := fmt.Sprintf("Result received: %s", req.DecisionID)
+	finished := !h.streaming
 	return &protocol.Decision{
 		Decision:   protocol.DecisionText,
 		DecisionID: "echo-002",
-		Text:       &protocol.TextResp{Content: content, Finished: true},
+		Text:       &protocol.TextResp{Content: content, Finished: finished},
 	}, nil
 }
 
@@ -61,6 +77,7 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 		Version:         "1.0.0",
 		Transport:       "rest",
 		ProtocolVersion: "1.0",
+		Capabilities:    []protocol.DecisionType{protocol.DecisionText},
 	}
 }
 
