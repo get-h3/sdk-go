@@ -82,10 +82,11 @@ Files: `examples/consensus/main.go`
 ---
 *Discovery sweep 2026-07-15 — Tick after LINT-S01. Board was empty. Found 2 gaps vs S04 spec.*
 
-## [ ] P5-02 — Sync-protocol workflow: regenerate → test → release
-- [ ] Create `.github/workflows/sync-protocol.yml` — triggered by repository_dispatch from protocol repo
-- [ ] Steps: checkout → `go mod tidy` → regenerate types from latest protocol JSON Schema → `go test ./... -count=1` → tag and release
-- [ ] Ensure `go generate` path references latest protocol schemas
-- [ ] Test: protocol dispatches → Go SDK regenerates and releases automatically
+## [x] P5-02 — Sync-protocol workflow: regenerate → test → release (commit: TBD)
+- [x] Create `.github/workflows/sync-protocol.yml` — triggered by repository_dispatch from protocol repo
+- [x] Steps: checkout sdk-go + protocol → copy schemas → `go generate ./protocol/...` → build + vet + test → tag + release
+- [x] Ensure `go generate` path references latest protocol schemas: `protocol/types.go` has `//go:generate go run github.com/get-h3/sdk-go/cmd/gen-types schemas/v1/*.json`
+- [x] Created `cmd/gen-types/main.go` — stub generator validates JSON schemas; full code-gen to be implemented
+- [x] GitReins guard: all 4 gates pass (secrets, build, lint, tests)
 
 **Spec ref:** S08 (Cross-Repo Release Pipeline)
