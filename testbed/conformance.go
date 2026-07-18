@@ -47,10 +47,18 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 	s := h.getSession(req.SessionID)
 
 	h.mu.Lock()
+	// Seed session history from context on first call.
+	if s.history == nil {
+		s.history = make([]protocol.HistoryEntry, 0, len(req.Context.History)+1)
+		s.history = append(s.history, req.Context.History...)
+	}
 	s.history = append(s.history, protocol.HistoryEntry{
 		Role:    protocol.RoleUser,
 		Content: req.Message.Content,
 	})
+	// Capture a snapshot of the session history for inclusion in the Decision.
+	sessionHistory := make([]protocol.HistoryEntry, len(s.history))
+	copy(sessionHistory, s.history)
 	h.mu.Unlock()
 
 	id := "dec-process"
@@ -59,6 +67,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 		return &protocol.Decision{
 			Decision:   protocol.DecisionText,
 			DecisionID: id,
+			History:    sessionHistory,
 			Text: &protocol.TextResp{
 				Content:  "Starting a thought...",
 				Finished: false,
@@ -70,6 +79,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 		return &protocol.Decision{
 			Decision:   protocol.DecisionText,
 			DecisionID: id,
+			History:    sessionHistory,
 			Text: &protocol.TextResp{
 				Content:  "The answer is 42.",
 				Finished: true,
@@ -82,6 +92,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 		return &protocol.Decision{
 			Decision:   protocol.DecisionToolCall,
 			DecisionID: id,
+			History:    sessionHistory,
 			ToolCall: &protocol.ToolCall{
 				Name:      tool.Name,
 				Params:    map[string]any{"input": req.Message.Content},
@@ -95,6 +106,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 		return &protocol.Decision{
 			Decision:   protocol.DecisionLLMCall,
 			DecisionID: id,
+			History:    sessionHistory,
 			LLMCall: &protocol.LLMCall{
 				Model: model.Name,
 				Messages: []protocol.LLMMessage{
@@ -111,6 +123,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 		return &protocol.Decision{
 			Decision:   protocol.DecisionDelegate,
 			DecisionID: id,
+			History:    sessionHistory,
 			Delegate: &protocol.Delegate{
 				Task: "delegated task: " + req.Message.Content,
 			},
@@ -121,6 +134,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,
 			DecisionID: id,
+			History:    sessionHistory,
 			End: &protocol.End{
 				Reason:  protocol.EndTaskComplete,
 				Summary: "task complete",
@@ -131,6 +145,7 @@ func (h *ConformanceHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.
 	return &protocol.Decision{
 		Decision:   protocol.DecisionText,
 		DecisionID: id,
+		History:    sessionHistory,
 		Text: &protocol.TextResp{
 			Content:  "Echo: " + req.Message.Content,
 			Finished: true,
@@ -157,10 +172,14 @@ func (h *ConformanceHarness) OnResult(req *protocol.ResultRequest) (*protocol.De
 	defer h.mu.Unlock()
 
 	s.resultCount++
+	sessionHistory := make([]protocol.HistoryEntry, len(s.history))
+	copy(sessionHistory, s.history)
+
 	if s.resultCount >= 3 {
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,
 			DecisionID: "dec-end-forced",
+			History:    sessionHistory,
 			End: &protocol.End{
 				Reason:  protocol.EndTaskComplete,
 				Summary: "forced end after 3 results",
@@ -172,6 +191,7 @@ func (h *ConformanceHarness) OnResult(req *protocol.ResultRequest) (*protocol.De
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,
 			DecisionID: "dec-end-error",
+			History:    sessionHistory,
 			End: &protocol.End{
 				Reason:  protocol.EndError,
 				Summary: "result indicated error",
@@ -182,6 +202,7 @@ func (h *ConformanceHarness) OnResult(req *protocol.ResultRequest) (*protocol.De
 	return &protocol.Decision{
 		Decision:   protocol.DecisionText,
 		DecisionID: "dec-result",
+		History:    sessionHistory,
 		Text: &protocol.TextResp{
 			Content:  "Result received: " + string(req.Result.Type),
 			Finished: true,

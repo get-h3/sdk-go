@@ -19,14 +19,15 @@ const (
 // Decision is the discriminated union of all possible H3 decision types.
 // The Decision field determines which sub-type is populated.
 type Decision struct {
-	Decision   DecisionType `json:"decision"`
-	DecisionID string       `json:"decision_id"`
-	ToolCall   *ToolCall    `json:"tool_call,omitempty"`
-	LLMCall    *LLMCall     `json:"llm_call,omitempty"`
-	Text       *TextResp    `json:"text,omitempty"`
-	Wait       *Wait        `json:"wait,omitempty"`
-	Delegate   *Delegate    `json:"delegate,omitempty"`
-	End        *End         `json:"end,omitempty"`
+	Decision   DecisionType   `json:"decision"`
+	DecisionID string         `json:"decision_id"`
+	History    []HistoryEntry `json:"history,omitempty"`
+	ToolCall   *ToolCall      `json:"tool_call,omitempty"`
+	LLMCall    *LLMCall       `json:"llm_call,omitempty"`
+	Text       *TextResp      `json:"text,omitempty"`
+	Wait       *Wait          `json:"wait,omitempty"`
+	Delegate   *Delegate      `json:"delegate,omitempty"`
+	End        *End           `json:"end,omitempty"`
 }
 
 // ToolCall is a decision to execute a Hermes tool.
