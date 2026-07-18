@@ -90,3 +90,10 @@ Files: `examples/consensus/main.go`
 - [x] GitReins guard: all 4 gates pass (secrets, build, lint, tests)
 
 **Spec ref:** S08 (Cross-Repo Release Pipeline)
+
+## [x] CI-FIX-01 — Fix golangci-lint Go version mismatch in CI (commit: f11cc18)
+- [x] Lint job setup-go bumped from 1.23 → 1.26 (matching go.mod)
+- [x] golangci-lint install-mode changed to goinstall (builds against local toolchain)
+- [x] Root cause: golangci-lint v1.64.8 binary built with go1.24 refuses to lint go1.26.5 projects
+- [x] Push pending CI verification
+- [x] P5-02 commit hash corrected: f1b0349
