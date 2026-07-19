@@ -545,3 +545,238 @@ func TestDecisionValidate_EndMissingReason(t *testing.T) {
 		t.Error("expected error for end decision with empty reason")
 	}
 }
+
+// — Additional validation tests for uncovered error paths —
+
+func TestProcessRequestValidate_MissingRole(t *testing.T) {
+	r := ProcessRequest{
+		SessionID: "sess-001",
+		Message:   Message{Role: "", Timestamp: "2026-01-01T00:00:00Z"},
+		Identity:  Identity{Platform: "tg", ChatID: "1", UserName: "u", UserID: "1"},
+		Context: Context{
+			Config:       Config{MaxIterations: 1, TimeoutSeconds: 1},
+			SessionState: SessionState{StartedAt: "2026-01-01T00:00:00Z"},
+		},
+	}
+	if err := r.Validate(); err == nil {
+		t.Error("expected error for missing message.role")
+	}
+}
+
+func TestProcessRequestValidate_MissingPlatform(t *testing.T) {
+	r := ProcessRequest{
+		SessionID: "sess-001",
+		Message:   Message{Role: "user", Timestamp: "2026-01-01T00:00:00Z"},
+		Identity:  Identity{Platform: "", ChatID: "1", UserName: "u", UserID: "1"},
+		Context: Context{
+			Config:       Config{MaxIterations: 1, TimeoutSeconds: 1},
+			SessionState: SessionState{StartedAt: "2026-01-01T00:00:00Z"},
+		},
+	}
+	if err := r.Validate(); err == nil {
+		t.Error("expected error for missing identity.platform")
+	}
+}
+
+func TestProcessRequestValidate_MissingChatID(t *testing.T) {
+	r := ProcessRequest{
+		SessionID: "sess-001",
+		Message:   Message{Role: "user", Timestamp: "2026-01-01T00:00:00Z"},
+		Identity:  Identity{Platform: "tg", ChatID: "", UserName: "u", UserID: "1"},
+		Context: Context{
+			Config:       Config{MaxIterations: 1, TimeoutSeconds: 1},
+			SessionState: SessionState{StartedAt: "2026-01-01T00:00:00Z"},
+		},
+	}
+	if err := r.Validate(); err == nil {
+		t.Error("expected error for missing identity.chat_id")
+	}
+}
+
+func TestDecisionValidate_MissingDecisionID(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionText,
+		DecisionID: "",
+		Text:       &TextResp{Content: "hello", Finished: true},
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for missing decision_id")
+	}
+}
+
+func TestDecisionValidate_ToolCallMissingName(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionToolCall,
+		DecisionID: "dec-001",
+		ToolCall:   &ToolCall{Name: ""},
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for tool_call with empty name")
+	}
+}
+
+func TestDecisionValidate_LLMCallMissingModel(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionLLMCall,
+		DecisionID: "dec-001",
+		LLMCall: &LLMCall{
+			Model:    "",
+			Messages: []LLMMessage{{Role: "user", Content: "hi"}},
+		},
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for llm_call with empty model")
+	}
+}
+
+func TestDecisionValidate_LLMCallNil(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionLLMCall,
+		DecisionID: "dec-001",
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for llm_call decision without llm_call payload")
+	}
+}
+
+func TestDecisionValidate_TextMissingContent(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionText,
+		DecisionID: "dec-001",
+		Text:       &TextResp{Content: ""},
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for text decision with empty content")
+	}
+}
+
+func TestDecisionValidate_TextNil(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionText,
+		DecisionID: "dec-001",
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for text decision without text payload")
+	}
+}
+
+func TestDecisionValidate_WaitMissingReason(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionWait,
+		DecisionID: "dec-001",
+		Wait:       &Wait{Reason: ""},
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for wait decision with empty reason")
+	}
+}
+
+func TestDecisionValidate_WaitNil(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionWait,
+		DecisionID: "dec-001",
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for wait decision without wait payload")
+	}
+}
+
+func TestDecisionValidate_DelegateMissingTask(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionDelegate,
+		DecisionID: "dec-001",
+		Delegate:   &Delegate{Task: ""},
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for delegate decision with empty task")
+	}
+}
+
+func TestDecisionValidate_DelegateNil(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionDelegate,
+		DecisionID: "dec-001",
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for delegate decision without delegate payload")
+	}
+}
+
+func TestDecisionValidate_EndNil(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionEnd,
+		DecisionID: "dec-001",
+	}
+	if err := d.Validate(); err == nil {
+		t.Error("expected error for end decision without end payload")
+	}
+}
+
+func TestDecisionValidate_ValidToolCall(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionToolCall,
+		DecisionID: "dec-001",
+		ToolCall:   &ToolCall{Name: "read_file"},
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("expected valid tool_call decision, got: %v", err)
+	}
+}
+
+func TestDecisionValidate_ValidLLMCall(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionLLMCall,
+		DecisionID: "dec-001",
+		LLMCall: &LLMCall{
+			Model:    "deepseek",
+			Messages: []LLMMessage{{Role: "user", Content: "hi"}},
+		},
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("expected valid llm_call decision, got: %v", err)
+	}
+}
+
+func TestDecisionValidate_ValidText(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionText,
+		DecisionID: "dec-001",
+		Text:       &TextResp{Content: "hello", Finished: true},
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("expected valid text decision, got: %v", err)
+	}
+}
+
+func TestDecisionValidate_ValidWait(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionWait,
+		DecisionID: "dec-001",
+		Wait:       &Wait{Reason: "waiting"},
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("expected valid wait decision, got: %v", err)
+	}
+}
+
+func TestDecisionValidate_ValidDelegate(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionDelegate,
+		DecisionID: "dec-001",
+		Delegate:   &Delegate{Task: "review"},
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("expected valid delegate decision, got: %v", err)
+	}
+}
+
+func TestDecisionValidate_ValidEnd(t *testing.T) {
+	d := Decision{
+		Decision:   DecisionEnd,
+		DecisionID: "dec-001",
+		End:        &End{Reason: EndTaskComplete},
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("expected valid end decision, got: %v", err)
+	}
+}
