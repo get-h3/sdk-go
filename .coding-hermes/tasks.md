@@ -178,6 +178,42 @@ No actionable gaps found: all 16 tasks complete, CI green (last 5 runs), 0 lint 
 
 2 findings resolved directly. No remaining gaps. Board is clean.
 
-## [x] DOC-S02 — Create CONTRIBUTING.md (commit: TBD)
+## [x] DOC-S02 — Create CONTRIBUTING.md (commit: 478643e)
 
-## [x] PERF-S01 — Add benchmarks (commit: TBD)
+## [x] PERF-S01 — Add benchmarks (commit: 478643e)
+
+---
+
+*Discovery sweep 2026-07-19 16:03 — Idle tick #5. Previous tick (#4) NEVER-DONE audit work (DOC-S02, PERF-S01) committed. Board empty, all checks pass. No actionable gaps.*
+
+### Health Check
+
+| Metric | Status |
+|--------|--------|
+| Build | PASS |
+| Vet | PASS |
+| Lint (golangci-lint) | 0 issues |
+| Tests | 3/3 packages pass, race detector clean |
+| Benchmarks | 5/5 pass |
+| CI (last 5 runs) | All success |
+| GitReins | 4/4 tasks complete |
+| Coverage (protocol) | 100.0% |
+| Coverage (harness) | 86.4% |
+| Coverage (testbed) | 81.0% |
+| Hilo | 77 edges, 16 files, clean topology |
+| Git status | Clean |
+| TODOs/FIXMEs | 0 |
+
+### Idle Tick Counter
+
+This is idle tick #5. No board changes made. Project is genuinely complete — all 18 tasks done, all quality gates pass, no spec drift vs protocol repo (protocol HEAD: 04c956ee — no SDK-breaking changes since P5-01 dispatch workflow).
+
+### Benchmarks
+
+| Benchmark | Result |
+|-----------|--------|
+| Decision marshal | 25.5 µs/op |
+| Decision unmarshal | 63.1 µs/op |
+| ProcessRequest marshal | 57.1 µs/op |
+| ProcessRequest unmarshal | 49.3 µs/op |
+| HandlerProcess (E2E) | 774.7 µs/op |
