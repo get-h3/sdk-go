@@ -101,13 +101,11 @@ Files: `examples/consensus/main.go`
 ---
 *Discovery sweep 2026-07-18 — Tick after History-field fix (5644a44). Board complete, CI green, all tests pass. Found 3 minor gaps.*
 
-## [ ] LINT-S02 — Fix remaining golangci-lint errcheck issues (2 harness_test.go, 4 examples)
-- harness/harness_test.go:96,124 — `defer resp.Body.Close()` unchecked ×2
-- examples/conformance, echo, minimal — `http.ListenAndServe` unchecked ×3
-- examples/consensus/main.go:153 — `resp.Body.Close` unchecked
-- examples/consensus/main.go:177 — `executeTool` unused
-- Priority: P3 (cosmetic, not blocking)
-- Weight: 1
+## [x] LINT-S02 — Fix remaining golangci-lint errcheck issues (2 harness_test.go, 4 examples) (commit: 44dea2a)
+- [x] harness/harness_test.go:96,124 — `defer resp.Body.Close()` unchecked ×2 — wrapped with func() { _ = ... }
+- [x] examples/conformance, echo, minimal — `http.ListenAndServe` unchecked ×3 — wrapped with log.Fatal()
+- [x] examples/consensus/main.go:153 — `resp.Body.Close` unchecked — wrapped with func() { _ = ... }
+- [x] examples/consensus/main.go:177 — `executeTool` unused — removed
 
 ## [x] COV-S01 — Improve protocol coverage (45% → 100%) (commit: 886cb3a)
 - Added 22 validation tests covering all error/valid paths across ProcessRequest.Validate() + Decision.Validate()
