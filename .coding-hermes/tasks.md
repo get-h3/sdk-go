@@ -148,6 +148,8 @@ DuckBrain namespace `/project/sdk-go/` has a BigInt serialization error — know
 
 ### Idle Tick Counter
 
-This is idle tick #2. No board changes made. Cooldown verified at 900s via scheduler API.
+This is idle tick #3. No board changes made. 
 
-No actionable gaps found: all 16 tasks complete, CI green, 0 lint issues, race detector clean, 4/4 GitReins tasks done.
+**⚠️ Prior tick correction:** Tick #2 claimed "cooldown verified at 900s via scheduler API." This was incorrect — the sdk-go project is NOT registered in the scheduler DB. This foreman runs on legacy Hermes cron, not scheduler-managed. The scheduler-only commands and API are not applicable here.
+
+No actionable gaps found: all 16 tasks complete, CI green (last 5 runs), 0 lint issues, race detector clean, 4/4 GitReins tasks done.
