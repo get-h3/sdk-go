@@ -109,8 +109,7 @@ Files: `examples/consensus/main.go`
 - Priority: P3 (cosmetic, not blocking)
 - Weight: 1
 
-## [ ] COV-S01 — Improve protocol coverage (45% → 70%)
-- protocol/validate.go Validate() at 66.7% and 38.7% — error paths uncovered
-- Add tests for: invalid DecisionType, missing required fields, malformed JSON
-- Priority: P3 (SDK is functionally complete, coverage gap is in edge cases)
-- Weight: 2
+## [x] COV-S01 — Improve protocol coverage (45% → 100%) (commit: 886cb3a)
+- Added 22 validation tests covering all error/valid paths across ProcessRequest.Validate() + Decision.Validate()
+- Coverage: 45.0% → 100.0% (exceeded 70% target)
+- All 40 tests pass, golangci-lint clean
