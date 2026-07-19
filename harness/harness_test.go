@@ -3,6 +3,7 @@ package harness
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -533,5 +534,25 @@ func TestMethodNotAllowed(t *testing.T) {
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", resp.StatusCode)
+	}
+}
+
+// BenchmarkHandlerProcess measures end-to-end handler latency for a POST /v1/process request.
+func BenchmarkHandlerProcess(b *testing.B) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	body := `{"session_id":"sess-001","message":{"role":"user","content":"Hello","timestamp":"2026-07-19T12:00:00Z"},"identity":{"provider":"test","chat_id":"c1","user_name":"tester","user_id":"u1"},"context":{"history":[],"tools":[],"models":[],"config":{"max_iterations":10,"timeout_seconds":30},"session_state":{"turn_count":0,"total_tool_calls":0,"total_llm_calls":0,"cost_so_far":0,"started_at":"2026-07-19T12:00:00Z"}}}`
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(body))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_, _ = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 	}
 }
