@@ -93,7 +93,7 @@ func TestHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/health: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -121,7 +121,7 @@ func TestHealthEndpoint_NilResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/health: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -178,7 +178,7 @@ func TestProcessEndpoint_Valid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -212,7 +212,7 @@ func TestProcessEndpoint_InvalidBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
@@ -258,7 +258,7 @@ func TestProcessEndpoint_InvalidDecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", resp.StatusCode)
@@ -288,7 +288,7 @@ func TestProcessEndpoint_OnProcessError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", resp.StatusCode)
@@ -307,7 +307,7 @@ func TestProcessEndpoint_MalformedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
@@ -347,7 +347,7 @@ func TestResultEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/result: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -377,7 +377,7 @@ func TestCancelEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/cancel: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -413,7 +413,7 @@ func TestGetSessionEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/sessions/sess-g1: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -441,7 +441,7 @@ func TestGetSessionEndpoint_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/sessions/nonexistent: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
@@ -478,7 +478,7 @@ func TestDeleteSessionEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DELETE /v1/sessions/sess-d1: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", resp.StatusCode)
@@ -511,7 +511,7 @@ func TestPanicRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", resp.StatusCode)
@@ -529,7 +529,7 @@ func TestMethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/process: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", resp.StatusCode)

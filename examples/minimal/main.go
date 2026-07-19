@@ -4,6 +4,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/get-h3/sdk-go/harness"
@@ -51,5 +52,5 @@ func (h *MinimalHarness) Health() *protocol.HealthResponse {
 
 func main() {
 	h := harness.NewHTTPServer(&MinimalHarness{})
-	http.ListenAndServe(":9191", h)
+	log.Fatal(http.ListenAndServe(":9191", h))
 }
