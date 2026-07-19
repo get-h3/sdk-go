@@ -8,6 +8,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/get-h3/sdk-go/harness"
@@ -17,5 +18,5 @@ import (
 func main() {
 	h := testbed.NewConformanceHarness()
 	srv := harness.NewHTTPServer(h)
-	http.ListenAndServe(":9191", srv)
+	log.Fatal(http.ListenAndServe(":9191", srv))
 }

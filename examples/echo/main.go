@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -83,5 +84,5 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 
 func main() {
 	h := harness.NewHTTPServer(&EchoHarness{})
-	http.ListenAndServe(":9191", h)
+	log.Fatal(http.ListenAndServe(":9191", h))
 }

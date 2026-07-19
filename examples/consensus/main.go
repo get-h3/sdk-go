@@ -150,7 +150,7 @@ func (h *ConsensusHarness) consensusPost(ctx context.Context, path string, body 
 	if err != nil {
 		return fmt.Errorf("consensus request to %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("consensus %s returned status %d", path, resp.StatusCode)
@@ -171,19 +171,6 @@ func (h *ConsensusHarness) createSession(ctx context.Context, userMessage string
 		return "", err
 	}
 	return resp.ID, nil
-}
-
-// executeTool runs a tool within a Consensus session and returns the output.
-func (h *ConsensusHarness) executeTool(ctx context.Context, sessionID, tool string, params map[string]any) (*ExecuteToolResponse, error) {
-	var resp ExecuteToolResponse
-	path := fmt.Sprintf("/api/v1/sessions/%s/tools/execute", sessionID)
-	if err := h.consensusPost(ctx, path, &ExecuteToolRequest{
-		Tool:   tool,
-		Params: params,
-	}, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
 }
 
 // sendMessage sends a user message to a Consensus session.
