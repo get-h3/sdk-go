@@ -780,3 +780,56 @@ func TestDecisionValidate_ValidEnd(t *testing.T) {
 		t.Errorf("expected valid end decision, got: %v", err)
 	}
 }
+
+// BenchmarkDecisionMarshal measures JSON marshal performance for a typical Decision.
+func BenchmarkDecisionMarshal(b *testing.B) {
+	d := Decision{
+		Decision:   DecisionText,
+		DecisionID: "dec-001",
+		Text:       &TextResp{Content: "Hello, world!", Finished: true},
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = json.Marshal(d)
+	}
+}
+
+// BenchmarkDecisionUnmarshal measures JSON unmarshal performance for a typical Decision.
+func BenchmarkDecisionUnmarshal(b *testing.B) {
+	data := []byte(`{"decision":"text","decision_id":"dec-001","text":{"content":"Hello, world!","finished":true}}`)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var d Decision
+		_ = json.Unmarshal(data, &d)
+	}
+}
+
+// BenchmarkProcessRequestMarshal measures JSON marshal for a full ProcessRequest.
+func BenchmarkProcessRequestMarshal(b *testing.B) {
+	req := ProcessRequest{
+		SessionID: "sess-001",
+		Message:   Message{Role: "user", Content: "Hello, world!", Timestamp: "2026-07-19T12:00:00Z"},
+		Identity:  Identity{Platform: "test", ChatID: "c1", UserName: "tester", UserID: "u1"},
+		Context: Context{
+			History:      []HistoryEntry{},
+			Tools:        []Tool{{Name: "search", Description: "Search the web", Parameters: map[string]any{}}},
+			Models:       []Model{{Name: "gpt-4", Provider: "openai"}},
+			Config:       Config{MaxIterations: 10, TimeoutSeconds: 30},
+			SessionState: SessionState{TurnCount: 0, TotalToolCalls: 0, TotalLLMCalls: 0, CostSoFar: 0, StartedAt: "2026-07-19T12:00:00Z"},
+		},
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = json.Marshal(req)
+	}
+}
+
+// BenchmarkProcessRequestUnmarshal measures JSON unmarshal for a full ProcessRequest.
+func BenchmarkProcessRequestUnmarshal(b *testing.B) {
+	data := []byte(`{"session_id":"sess-001","message":{"role":"user","content":"Hello, world!","timestamp":"2026-07-19T12:00:00Z"},"identity":{"platform":"test","chat_id":"c1","user_name":"tester","user_id":"u1"},"context":{"history":[],"tools":[{"name":"search","description":"Search the web","parameters":{}}],"models":[{"name":"gpt-4","provider":"openai"}],"config":{"max_iterations":10,"timeout_seconds":30},"session_state":{"turn_count":0,"total_tool_calls":0,"total_llm_calls":0,"cost_so_far":0,"started_at":"2026-07-19T12:00:00Z"}}}`)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var req ProcessRequest
+		_ = json.Unmarshal(data, &req)
+	}
+}
