@@ -1,7 +1,9 @@
 package harness
 
 import (
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -173,6 +175,11 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-generate decision_id if harness didn't set one (H3 protocol §2.1).
+	if decision.DecisionID == "" {
+		decision.DecisionID = generateUUID()
+	}
+
 	if err := decision.Validate(); err != nil {
 		writeError(w, http.StatusInternalServerError, protocol.ErrInvalidDecision, err.Error())
 		return
@@ -199,6 +206,11 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternalError, err.Error())
 		return
+	}
+
+	// Auto-generate decision_id if harness didn't set one (H3 protocol §2.1).
+	if decision.DecisionID == "" {
+		decision.DecisionID = generateUUID()
 	}
 
 	if err := decision.Validate(); err != nil {
@@ -261,4 +273,21 @@ func (s *server) deleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.sessions.delete(sessionID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// generateUUID creates a UUIDv4 string using crypto/rand.
+// Zero external dependencies — stdlib only.
+func generateUUID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read failure is catastrophic (system entropy exhausted).
+		// In practice this never happens on Linux; the fallback keeps the
+		// function from needing to return an error in the hot path.
+		panic("harness: crypto/rand.Read failed: " + err.Error())
+	}
+	// Set UUID version 4 and variant bits.
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10xx
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
