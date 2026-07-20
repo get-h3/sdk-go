@@ -1,67 +1,134 @@
 # Contributing to H3 SDK for Go
 
-Thanks for contributing to the H3 Go SDK. This document covers the workflow, quality gates, and conventions.
+Go SDK for building H3-compliant agent harnesses. Implements the harness side of the H3 protocol.
 
-## Development
+## Development Setup
 
 ```bash
-go build ./...              # Build all packages
-go vet ./...                # Static analysis
-go test -race -count=1 ./...  # Run tests with race detector
-golangci-lint run ./...     # Lint (0 issues required)
+cd sdk-go/
+go mod download
 ```
 
-Requirements: Go 1.22+ (toolchain go1.26.5).
-
-## Quality Gates
-
-Every PR must pass:
-
-| Gate | Command | Requirement |
-|------|---------|-------------|
-| Build | `go build ./...` | Zero errors |
-| Vet | `go vet ./...` | Zero warnings |
-| Lint | `golangci-lint run ./...` | 0 issues |
-| Tests | `go test -race -count=1 ./...` | 100% pass, no data races |
-| Coverage | `go test -cover ./...` | Protocol ≥ 90%, Harness ≥ 80% |
-| GitReins | `gitreins guard` | Tier 1 pass (secrets, lint, tests) |
-
-## Project Structure
+## Package Structure
 
 ```
 sdk-go/
-  protocol/     Core types + validation (JSON Schema → Go)
-  harness/      HTTP handler + middleware (net/http)
-  testbed/      MockHermes, assertions, conformance tester
-  examples/     Runnable demos (echo, minimal, consensus, conformance)
-  cmd/gen-types/  Code generator (reads schemas, writes Go types)
+├── protocol/
+│   ├── types.go       # Go types (generated from protocol repo JSON Schema)
+│   ├── validate.go    # Protocol-level validation
+│   └── types_test.go
+├── harness/
+│   ├── interface.go   # Harness interface definition
+│   ├── http.go        # HTTP server + router
+│   ├── middleware.go   # Request logging middleware
+│   └── harness_test.go
+├── testbed/
+│   ├── mock_hermes.go # MockHermes for unit testing
+│   └── testbed_test.go
+└── examples/
+    ├── echo/          # Minimal echo harness
+    ├── minimal/       # Bare-minimum example
+    ├── conformance/   # Full conformance test harness
+    └── consensus/     # Multi-model consensus demo
 ```
 
-## Adding a Feature
+## Before Making Changes
 
-1. Create a feature branch from `main`
-2. Implement with tests (target ≥ 80% coverage on new code)
-3. Run full quality gates locally
-4. Open a PR — CI runs the same gates
-5. Merge after review + green CI
+### Run Tests
 
-## Commit Convention
+```bash
+go test ./... -count=1
+```
 
-Follow conventional commits: `type: description`
+### Run Vet + Build
 
-Types: `feat`, `fix`, `test`, `docs`, `chore`, `refactor`
+```bash
+go vet ./...
+go build ./...
+```
 
-Example: `feat: add streaming support to ProtocolRequest`
+### Run the Test Battery
 
-## Architecture Decisions
+```bash
+# Start the echo example in one terminal:
+go run ./examples/echo/
 
-This SDK implements the [H3 specification](https://github.com/get-h3/h3). Protocol types are generated from JSON Schema (`schemas/v1/`). The `Harness` interface is the single integration point — harness implementors only need to satisfy 5 methods.
+# In another terminal, run the compliance test battery:
+h3-test --endpoint http://localhost:9191
+# 43 compliance tests, exit code 0 = compliant
+```
 
-Design principles:
-- Zero external dependencies (stdlib only, except `uuid` in examples)
-- `http.Handler` compatibility (not a framework — plug into any Go HTTP server)
-- Full JSON Schema round-trip fidelity
+### Sync Protocol Types
 
-## Questions
+If the upstream protocol changed:
 
-Open a GitHub issue or discussion. For spec questions, see the [H3 repository](https://github.com/get-h3/h3).
+```bash
+# Regenerate types from get-h3/protocol schemas
+go run ./scripts/sync_protocol/
+```
+
+Never hand-edit generated types in `protocol/types.go`.
+
+## Making Changes
+
+### Harness Interface
+
+- `harness/interface.go` defines the `Harness` interface that all harnesses implement
+- Changes to the interface are MAJOR — they break all existing harnesses
+- New optional methods should use a separate interface with type assertion
+
+### HTTP Server
+
+- `harness/http.go` handles request routing, JSON serialization, error responses
+- Must follow the H3 protocol exactly — see `get-h3/protocol/h3-protocol.yaml`
+- All endpoints log METHOD /path STATUS DURATION
+
+### Middleware
+
+- `harness/middleware.go` provides request logging
+- Must not leak credentials or sensitive data in logs
+
+### Protocol Validation
+
+- `protocol/validate.go` enforces required fields and format constraints
+- Must match the JSON Schema definitions from `get-h3/protocol/schemas/v1/`
+
+## Quality Gates
+
+### Pre-Commit
+
+```bash
+go vet ./...        # Static analysis
+go test ./...       # All tests
+gofmt -s -w .       # Format
+```
+
+### CI Pipeline
+
+GitHub Actions runs on every PR:
+1. `go vet ./...`
+2. `go test ./... -race -count=1`
+3. `gofmt -s -d .` (must be clean)
+4. `h3-test --endpoint http://localhost:9191` (against echo example)
+
+All must pass.
+
+## Release
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+## Review Checklist
+
+- [ ] `go test ./...` passes
+- [ ] `go vet ./...` clean
+- [ ] `h3-test --endpoint http://localhost:9191` passes against echo example
+- [ ] New features have tests
+- [ ] Protocol changes regenerated from upstream
+- [ ] No hand-edits to generated types
+
+## Questions?
+
+See the umbrella project at [get-h3/h3](https://github.com/get-h3/h3) for architecture, specs, and the cross-repo task board.
