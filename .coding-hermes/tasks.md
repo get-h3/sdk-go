@@ -156,27 +156,53 @@ No actionable gaps found: all 16 tasks complete, CI green (last 5 runs), 0 lint 
 
 ## [x] NEVER-DONE — Run 11-point self-improvement audit
 
-**Tick #4 — 2026-07-19 14:01 UTC. All 11 checks run with concrete tool output:**
+**Tick #9 — 2026-07-20 15:00 UTC. All 11 checks run with concrete tool output:**
 
 | Check | Status | Detail |
 |-------|--------|--------|
-| 1. Spec alignment | PASS | Module path discrepancy documented (non-blocking), API surface 1:1 confirmed |
-| 2. Doc coverage | **GAP** | CONTRIBUTING.md missing → created (DOC-S02) |
-| 3. Test gaps | PASS | protocol 100%, harness 86.4%, testbed 81.0%; uncovered paths are system-level error edges |
-| 4. Package upgrades | PASS | Zero external deps (pure stdlib); nothing to upgrade |
-| 5. Pitfall hunt | PASS | 0 TODOs/FIXMEs/HACKs; gitleaks whitelist acceptable for lib |
-| 6. Performance | **GAP** | No benchmarks existed → 5 benchmarks added (PERF-S01) |
-| 7. Endpoint verification | PASS | All 6 endpoints exercised via harness tests; handler returns proper http.Handler |
-| 8. CI/CD health | PASS | Last 5 runs success; 3-job matrix (build+test, lint, gitreins-guard) |
-| 9. DuckBrain sync | BLOCKED | BigInt serialization error (known DuckBrain issue, not project-related) |
-| 10. Code quality | PASS | 0 TODOs; largest core file 309 lines; clean topology |
-| 11. Middle-out wiring | PASS | NewHTTPServer → http.Handler wired; examples demonstrate usage |
+| 1. Spec alignment | PASS | Protocol HEAD 1e0c728d (test-report.json for QV-SHIM-02 — shim-only, no Go SDK impact) |
+| 2. Doc coverage | **GAP** → FIXED | 5 files lacked `// Package` doc comments → DOC-PKG committed (7c5e3dd) |
+| 3. Test gaps | PASS | 3/3 packages tested; coverage: harness 84.2%, protocol 100%, testbed 81.0%, total 85.1% |
+| 4. Package upgrades | PASS | Zero external deps (pure stdlib) |
+| 5. Pitfall hunt | PASS | 0 nil,nil stubs, 0 stubs/501s, gitleaks allowlist acceptable |
+| 6. Performance | PASS | 5 benchmarks passing; DecisionMarshal 274.5ns/op |
+| 7. Endpoint verification | PASS | All 6 endpoints exercised via handler tests |
+| 8. CI/CD health | PASS | Last 5 runs all success (latest: propagate QV-SDK-02) |
+| 9. DuckBrain sync | BLOCKED | BigInt serialization (known platform issue, not project-related) |
+| 10. Code quality | PASS | 0 TODOs, clean topology (80 edges/16 files), largest core file 309 lines |
+| 11. Middle-out wiring | PASS | NewHTTPServer→http.Handler wired; examples demonstrate usage |
 
 **Actions taken:**
-- DOC-S02: Created CONTRIBUTING.md with development workflow, quality gates, project structure, commit conventions
-- PERF-S01: Added 5 benchmarks — Decision marshal (304 ns/op), Decision unmarshal (1,107 ns/op), ProcessRequest marshal (1,066 ns/op), ProcessRequest unmarshal (5,389 ns/op), HandlerProcess (68 µs/op)
+- DOC-PKG: Added `// Package` doc comments to 5 files (harness.go, middleware.go, validate.go, assertions.go, conformance.go)
 
-2 findings resolved directly. No remaining gaps. Board is clean.
+**QV-SDK-02 completed:** Auto-generated decision_id via generateUUID() in harness layer (c4e25a2). UUID v4 using crypto/rand, 0 new deps.
+
+### Health Check
+
+| Metric | Status |
+|--------|--------|
+| Build | PASS |
+| Vet | PASS |
+| Lint (golangci-lint) | 0 issues |
+| Tests | 3/3 packages pass |
+| Race detector | PASS (all 3 packages clean) |
+| Benchmarks | 5/5 pass |
+| CI (last 5 runs) | All success |
+| GitReins | 4/4 tasks complete |
+| Coverage (protocol) | 100.0% |
+| Coverage (harness) | 84.2% |
+| Coverage (testbed) | 81.0% |
+| Hilo | 80 edges, 16 files, clean topology — Hilo=useful |
+| Git status | Clean (0 uncommitted changes) |
+| Unpushed commits | 3 (c4e25a2, a642806, 7c5e3dd) |
+| TODOs/FIXMEs/HACKs | 0 |
+| Protocol drift | HEAD 1e0c728d — adds test-report.json (shim-only, no Go SDK impact) |
+| Go version | go1.26.5 |
+| External deps | 0 (pure stdlib) |
+
+### Idle Tick Counter
+
+Idle tick #1 (reset after QV-SDK-02 completion). QV-SDK-02 was a real implementation task — auto-generate decision_id. DOC-PKG gap found and fixed in same tick. 1 finding resolved. Board is clean.
 
 ## [x] DOC-S02 — Create CONTRIBUTING.md (commit: 478643e)
 
