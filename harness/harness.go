@@ -1,3 +1,5 @@
+// Package harness provides the H3 HTTP handler, middleware, and Harness interface
+// for building H3-compliant agent harnesses.
 package harness
 
 import (

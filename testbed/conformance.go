@@ -1,3 +1,5 @@
+// Package testbed provides MockHermes and assertion helpers for unit-testing
+// harness implementations against the H3 protocol.
 package testbed
 
 import (

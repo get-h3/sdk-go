@@ -1,3 +1,4 @@
+// Package protocol defines the H3 wire-format types and validation logic.
 package protocol
 
 import "fmt"
