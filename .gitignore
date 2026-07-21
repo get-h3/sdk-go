@@ -16,6 +16,10 @@
 # Go build artifacts from examples/
 /echo
 /minimal
+examples/echo/echo-server
+examples/minimal/minimal-server
+examples/conformance/conformance-server
+examples/consensus/consensus-server
 
 # OS
 .DS_Store
