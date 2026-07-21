@@ -447,3 +447,54 @@ Idle tick #6. Cooldown escalated to 43200s (12h). Project is genuinely complete 
 | 11. Middle-out wiring | PASS | NewHTTPServer→http.Handler wired; 4 examples demonstrate usage (echo, minimal, conformance, consensus) |
 
 **Verdict: No actionable gaps.** Idle tick #10. Cooldown escalated to 691200s (192h / 8 days). Project is genuinely complete — zero external deps, zero TODOs, full spec coverage (total 85.1%), CI green, protocol repo unchanged in SDK-affecting ways. All 18+ tasks complete spanning 9 phases. Next tick: ~July 28 19:34 UTC.
+
+---
+
+*Discovery sweep 2026-07-20 22:00 — Idle tick #11. Board complete, all checks pass. Cooldown escalated 691200s→1382400s (384h / 16 days).*
+
+### Health Check
+
+| Metric | Status |
+|--------|--------|
+| Build | PASS |
+| Vet | PASS |
+| Lint (golangci-lint) | 0 issues |
+| Tests | 3/3 packages pass |
+| Race detector | PASS (all 3 packages clean) |
+| Benchmarks | 5/5 pass (harness: 66µs/op, protocol: 279ns-5.1µs/op) |
+| CI (last 5 runs) | All success |
+| GitReins | 4/4 tasks complete |
+| Coverage (protocol) | 100.0% |
+| Coverage (harness) | 84.2% |
+| Coverage (testbed) | 81.0% |
+| Hilo | 80 edges, 16 files, clean topology — Hilo=useful |
+| Govulncheck | No vulnerabilities found |
+| Git status | Clean (0 uncommitted changes) |
+| Unpushed commits | 0 (HEAD matches origin/main) |
+| TODOs/FIXMEs/HACKs | 0 |
+| Stubs | 1 (cmd/gen-types — intentional; validates schemas, full code-gen deferred) |
+| Protocol drift | HEAD 1e0c728d — adds test-report.json (shim-only, no Go SDK impact) |
+| Go version | go1.26.5 |
+| External deps | 0 (pure stdlib) |
+
+### Never-Done 11-Point Audit
+
+| Check | Status | Detail |
+|-------|--------|--------|
+| 1. Spec alignment | PASS | Module path documented, API surface 1:1; protocol HEAD 1e0c728d (shim-only, no Go SDK impact) |
+| 2. Doc coverage | PASS | README.md + CONTRIBUTING.md + AGENTS.md; all source files have package doc comments |
+| 3. Test gaps | PASS | protocol 100% (40 tests), harness 84.2% (14 tests + benchmark), testbed 81.0% (13 tests) |
+| 4. Package upgrades | PASS | Zero external deps (pure stdlib) |
+| 5. Pitfall hunt | PASS | 0 TODOs/FIXMEs/HACKs; 1 intentional stub (cmd/gen-types) |
+| 6. Performance | PASS | 5 benchmarks passing; BenchmarkDecisionMarshal 279.6ns/op, BenchmarkHandlerProcess 66µs/op |
+| 7. Endpoint verification | PASS | All 6 endpoints exercised; panic recovery demonstrated |
+| 8. CI/CD health | PASS | GitHub Actions active; last 5 runs all success |
+| 9. DuckBrain sync | BLOCKED | BigInt serialization (known platform issue, not project-related) |
+| 10. Code quality | PASS | 0 TODOs, clean topology (80 edges/16 files), largest core file 309 lines, golangci-lint 0 issues |
+| 11. Middle-out wiring | PASS | NewHTTPServer→http.Handler wired; 4 examples demonstrate usage |
+
+### Fix Applied
+
+- GITIGNORE: Added example build artifact patterns to .gitignore. Commit: 75f9123.
+
+**Verdict: No actionable gaps.** Idle tick #11. Cooldown escalated to 1382400s (384h / 16 days). Project genuinely complete — zero external deps, zero TODOs, full spec coverage (total 85.1%), CI green. All 18+ tasks complete spanning 9 phases. Next tick: ~August 5 22:00 UTC.
