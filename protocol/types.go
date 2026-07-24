@@ -4,6 +4,11 @@
 //go:generate go run github.com/get-h3/sdk-go/cmd/gen-types schemas/v1/*.json
 package protocol
 
+import (
+	"crypto/rand"
+	"fmt"
+)
+
 // DecisionType enumerates the six H3 decision types.
 type DecisionType string
 
@@ -306,4 +311,32 @@ type ErrorDetail struct {
 // ErrorResponse is the standard error response for all H3 endpoints.
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
+}
+
+// GenerateUUID creates a UUIDv4 string using crypto/rand.
+// Zero external dependencies — stdlib only.
+func GenerateUUID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read failure is catastrophic (system entropy exhausted).
+		// In practice this never happens on Linux; the fallback keeps the
+		// function from needing to return an error in the hot path.
+		panic("protocol: crypto/rand.Read failed: " + err.Error())
+	}
+	// Set UUID version 4 and variant bits.
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10xx
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// NewDecision creates a new Decision with the given type and a
+// freshly generated UUID as DecisionID. Harness implementations
+// should prefer this over literal construction so decisions always
+// carry a unique, traceable identifier.
+func NewDecision(decisionType DecisionType) *Decision {
+	return &Decision{
+		Decision:   decisionType,
+		DecisionID: GenerateUUID(),
+	}
 }
