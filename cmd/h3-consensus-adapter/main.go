@@ -5,7 +5,8 @@
 // and can be pointed at any running Consensus instance.
 //
 // Usage:
-//   h3-consensus-adapter --consensus-url http://localhost:8094 --port 9191
+//
+//	h3-consensus-adapter --consensus-url http://localhost:8094 --port 9191
 //
 // Hermes → H3 protocol → this adapter → Consensus REST API → agent loop
 package main
@@ -29,7 +30,7 @@ import (
 // CLI Flags
 // ============================================================================
 
-	var (
+var (
 	consensusURL = flag.String("consensus-url", "http://localhost:8094", "Consensus server URL")
 	port         = flag.Int("port", 9191, "Port to listen on for H3 protocol")
 	adminKey     = flag.String("admin-key", "", "Consensus admin API key (or set CONSENSUS_ADMIN_KEY env)")
@@ -98,8 +99,8 @@ type End struct {
 }
 
 type ProcessRequest struct {
-	SessionID string  `json:"session_id"`
-	Message   Message `json:"message"`
+	SessionID string   `json:"session_id"`
+	Message   Message  `json:"message"`
 	Identity  Identity `json:"identity"`
 	Context   Context  `json:"context"`
 }
@@ -182,9 +183,10 @@ type ConsensusSendReq struct {
 }
 
 type ConsensusStatusResp struct {
-	Status     string              `json:"status"`
-	Goal       string              `json:"goal"`
-	Iterations []ConsensusIterResp `json:"iterations"`
+	Status      string              `json:"status"`
+	Goal        string              `json:"goal"`
+	LastMessage *string             `json:"last_message"`
+	Iterations  []ConsensusIterResp `json:"iterations"`
 }
 
 type ConsensusIterResp struct {
@@ -418,9 +420,11 @@ func (a *Adapter) handleProcess(w http.ResponseWriter, r *http.Request) {
 
 	// If session is idle/complete, the response is the final answer
 	if status != nil && (status.Status == "idle" || status.Status == "completed") {
-		// Collect the internal monologue from iterations as the response
+		// Prefer LastMessage from Consensus memory_events, fall back to iterations
 		var responseText string
-		if len(status.Iterations) > 0 {
+		if status.LastMessage != nil && *status.LastMessage != "" {
+			responseText = *status.LastMessage
+		} else if len(status.Iterations) > 0 {
 			responseText = status.Iterations[len(status.Iterations)-1].Monologue
 		}
 		if responseText == "" {
@@ -489,11 +493,13 @@ func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Feed tool result back to Consensus
-	a.consensusSendToolResult(consensusID, req.Result.ToolName, req.Result.Success, req.Result.Data)
+	// Only feed tool results back to Consensus — text_sent is just a poll
+	if req.Result.Type == "tool_result" {
+		a.consensusSendToolResult(consensusID, req.Result.ToolName, req.Result.Success, req.Result.Data)
+	}
 
-	// Poll for response
-	time.Sleep(2 * time.Second) // give Consensus time to process
+	// Poll for response (give Consensus time to process)
+	time.Sleep(1 * time.Second)
 
 	status, err := a.consensusGetStatus(consensusID)
 	if err != nil {
@@ -509,8 +515,14 @@ func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
 
 	if status.Status == "idle" || status.Status == "completed" {
 		var summary string
-		if len(status.Iterations) > 0 {
+		// Prefer LastMessage (populated by Consensus from memory_events)
+		if status.LastMessage != nil && *status.LastMessage != "" {
+			summary = *status.LastMessage
+		} else if len(status.Iterations) > 0 {
 			summary = status.Iterations[len(status.Iterations)-1].Monologue
+		}
+		if summary == "" {
+			summary = fmt.Sprintf("Session completed (status: %s)", status.Status)
 		}
 		// Return DecisionText with Finished: true so the response text is in
 		// Text.Content where the H3 client displays it — NOT End.Summary which

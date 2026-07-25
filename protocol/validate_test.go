@@ -10,15 +10,15 @@ import (
 // error code, message, and details programmatically.
 func TestValidationError_StructuredReturn(t *testing.T) {
 	tests := []struct {
-		name    string
-		req     ProcessRequest
-		wantCode ErrorCode
+		name      string
+		req       ProcessRequest
+		wantCode  ErrorCode
 		wantField string
 	}{
 		{
-			name:    "missing session_id",
-			req:     ProcessRequest{},
-			wantCode: ErrInvalidRequest,
+			name:      "missing session_id",
+			req:       ProcessRequest{},
+			wantCode:  ErrInvalidRequest,
 			wantField: "session_id",
 		},
 		{
@@ -26,7 +26,7 @@ func TestValidationError_StructuredReturn(t *testing.T) {
 			req: ProcessRequest{
 				SessionID: "sess-001",
 			},
-			wantCode: ErrInvalidRequest,
+			wantCode:  ErrInvalidRequest,
 			wantField: "message.role",
 		},
 		{
@@ -35,7 +35,7 @@ func TestValidationError_StructuredReturn(t *testing.T) {
 				SessionID: "sess-001",
 				Message:   Message{Role: "user"},
 			},
-			wantCode: ErrInvalidRequest,
+			wantCode:  ErrInvalidRequest,
 			wantField: "identity.platform",
 		},
 		{
@@ -45,7 +45,7 @@ func TestValidationError_StructuredReturn(t *testing.T) {
 				Message:   Message{Role: "user"},
 				Identity:  Identity{Platform: "telegram"},
 			},
-			wantCode: ErrInvalidRequest,
+			wantCode:  ErrInvalidRequest,
 			wantField: "identity.chat_id",
 		},
 	}
@@ -80,99 +80,99 @@ func TestValidationError_StructuredReturn(t *testing.T) {
 
 func TestDecisionValidationError_StructuredReturn(t *testing.T) {
 	tests := []struct {
-		name    string
-		d       Decision
-		wantCode ErrorCode
+		name      string
+		d         Decision
+		wantCode  ErrorCode
 		wantField string
 	}{
 		{
-			name:    "missing decision_id",
-			d:       Decision{Decision: DecisionText, Text: &TextResp{Content: "hi"}},
-			wantCode: ErrInvalidDecision,
+			name:      "missing decision_id",
+			d:         Decision{Decision: DecisionText, Text: &TextResp{Content: "hi"}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "decision_id",
 		},
 		{
-			name:    "tool_call missing name",
-			d:       Decision{Decision: DecisionToolCall, DecisionID: "d1", ToolCall: &ToolCall{}},
-			wantCode: ErrInvalidDecision,
+			name:      "tool_call missing name",
+			d:         Decision{Decision: DecisionToolCall, DecisionID: "d1", ToolCall: &ToolCall{}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "tool_call.name",
 		},
 		{
-			name:    "tool_call nil payload",
-			d:       Decision{Decision: DecisionToolCall, DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "tool_call nil payload",
+			d:         Decision{Decision: DecisionToolCall, DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "tool_call",
 		},
 		{
-			name:    "llm_call missing model",
-			d:       Decision{Decision: DecisionLLMCall, DecisionID: "d1", LLMCall: &LLMCall{Messages: []LLMMessage{{Role: "user", Content: "hi"}}}},
-			wantCode: ErrInvalidDecision,
+			name:      "llm_call missing model",
+			d:         Decision{Decision: DecisionLLMCall, DecisionID: "d1", LLMCall: &LLMCall{Messages: []LLMMessage{{Role: "user", Content: "hi"}}}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "llm_call.model",
 		},
 		{
-			name:    "llm_call empty messages",
-			d:       Decision{Decision: DecisionLLMCall, DecisionID: "d1", LLMCall: &LLMCall{Model: "m1"}},
-			wantCode: ErrInvalidDecision,
+			name:      "llm_call empty messages",
+			d:         Decision{Decision: DecisionLLMCall, DecisionID: "d1", LLMCall: &LLMCall{Model: "m1"}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "llm_call.messages",
 		},
 		{
-			name:    "llm_call nil payload",
-			d:       Decision{Decision: DecisionLLMCall, DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "llm_call nil payload",
+			d:         Decision{Decision: DecisionLLMCall, DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "llm_call",
 		},
 		{
-			name:    "text missing content",
-			d:       Decision{Decision: DecisionText, DecisionID: "d1", Text: &TextResp{}},
-			wantCode: ErrInvalidDecision,
+			name:      "text missing content",
+			d:         Decision{Decision: DecisionText, DecisionID: "d1", Text: &TextResp{}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "text.content",
 		},
 		{
-			name:    "text nil payload",
-			d:       Decision{Decision: DecisionText, DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "text nil payload",
+			d:         Decision{Decision: DecisionText, DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "text",
 		},
 		{
-			name:    "wait missing reason",
-			d:       Decision{Decision: DecisionWait, DecisionID: "d1", Wait: &Wait{}},
-			wantCode: ErrInvalidDecision,
+			name:      "wait missing reason",
+			d:         Decision{Decision: DecisionWait, DecisionID: "d1", Wait: &Wait{}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "wait.reason",
 		},
 		{
-			name:    "wait nil payload",
-			d:       Decision{Decision: DecisionWait, DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "wait nil payload",
+			d:         Decision{Decision: DecisionWait, DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "wait",
 		},
 		{
-			name:    "delegate missing task",
-			d:       Decision{Decision: DecisionDelegate, DecisionID: "d1", Delegate: &Delegate{}},
-			wantCode: ErrInvalidDecision,
+			name:      "delegate missing task",
+			d:         Decision{Decision: DecisionDelegate, DecisionID: "d1", Delegate: &Delegate{}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "delegate.task",
 		},
 		{
-			name:    "delegate nil payload",
-			d:       Decision{Decision: DecisionDelegate, DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "delegate nil payload",
+			d:         Decision{Decision: DecisionDelegate, DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "delegate",
 		},
 		{
-			name:    "end missing reason",
-			d:       Decision{Decision: DecisionEnd, DecisionID: "d1", End: &End{}},
-			wantCode: ErrInvalidDecision,
+			name:      "end missing reason",
+			d:         Decision{Decision: DecisionEnd, DecisionID: "d1", End: &End{}},
+			wantCode:  ErrInvalidDecision,
 			wantField: "end.reason",
 		},
 		{
-			name:    "end nil payload",
-			d:       Decision{Decision: DecisionEnd, DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "end nil payload",
+			d:         Decision{Decision: DecisionEnd, DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "end",
 		},
 		{
-			name:    "unknown decision type",
-			d:       Decision{Decision: "bogus", DecisionID: "d1"},
-			wantCode: ErrInvalidDecision,
+			name:      "unknown decision type",
+			d:         Decision{Decision: "bogus", DecisionID: "d1"},
+			wantCode:  ErrInvalidDecision,
 			wantField: "", // uses "decision_type" key instead
 		},
 	}

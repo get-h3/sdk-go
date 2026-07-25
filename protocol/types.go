@@ -99,10 +99,10 @@ type End struct {
 
 // ProcessRequest is the request body for POST /v1/process.
 type ProcessRequest struct {
-	SessionID string  `json:"session_id"`
-	Message   Message `json:"message"`
+	SessionID string   `json:"session_id"`
+	Message   Message  `json:"message"`
 	Identity  Identity `json:"identity"`
-	Context   Context `json:"context"`
+	Context   Context  `json:"context"`
 }
 
 // Message represents a single message in a conversation.
@@ -163,13 +163,13 @@ type Tool struct {
 
 // Model represents an available LLM with pricing and capabilities.
 type Model struct {
-	Name               string  `json:"name"`
-	Provider           string  `json:"provider"`
-	CostPer1kInput     float64 `json:"cost_per_1k_input,omitempty"`
-	CostPer1kOutput    float64 `json:"cost_per_1k_output,omitempty"`
-	ContextWindow      int     `json:"context_window"`
-	SupportsVision     bool    `json:"supports_vision,omitempty"`
-	SupportsToolCalling bool   `json:"supports_tool_calling,omitempty"`
+	Name                string  `json:"name"`
+	Provider            string  `json:"provider"`
+	CostPer1kInput      float64 `json:"cost_per_1k_input,omitempty"`
+	CostPer1kOutput     float64 `json:"cost_per_1k_output,omitempty"`
+	ContextWindow       int     `json:"context_window"`
+	SupportsVision      bool    `json:"supports_vision,omitempty"`
+	SupportsToolCalling bool    `json:"supports_tool_calling,omitempty"`
 }
 
 // SessionState tracks session-level metrics.
@@ -205,21 +205,21 @@ type Context struct {
 type ResultType string
 
 const (
-	ResultTool         ResultType = "tool_result"
-	ResultLLMResponse  ResultType = "llm_response"
-	ResultTextSent     ResultType = "text_sent"
-	ResultDelegate     ResultType = "delegate_result"
-	ResultWaitTimeout  ResultType = "wait_timeout"
-	ResultError        ResultType = "error"
+	ResultTool        ResultType = "tool_result"
+	ResultLLMResponse ResultType = "llm_response"
+	ResultTextSent    ResultType = "text_sent"
+	ResultDelegate    ResultType = "delegate_result"
+	ResultWaitTimeout ResultType = "wait_timeout"
+	ResultError       ResultType = "error"
 )
 
 // Result is the execution result payload within a ResultRequest.
 type Result struct {
-	Type        ResultType `json:"type"`
-	ToolName    string     `json:"tool_name,omitempty"`
-	Data        any        `json:"data,omitempty"`
-	DurationMs  float64    `json:"duration_ms,omitempty"`
-	Success     bool       `json:"success"`
+	Type       ResultType `json:"type"`
+	ToolName   string     `json:"tool_name,omitempty"`
+	Data       any        `json:"data,omitempty"`
+	DurationMs float64    `json:"duration_ms,omitempty"`
+	Success    bool       `json:"success"`
 }
 
 // ResultRequest is the request body for POST /v1/result.
@@ -255,15 +255,15 @@ const (
 
 // HealthResponse is the response from GET /v1/health.
 type HealthResponse struct {
-	Status          HealthStatus  `json:"status"`
-	Version         string        `json:"version"`
-	Transport       string        `json:"transport,omitempty"`
-	ProtocolVersion string        `json:"protocol_version,omitempty"`
-	UptimeSeconds   int           `json:"uptime_seconds,omitempty"`
-	ActiveSessions  int           `json:"active_sessions,omitempty"`
+	Status          HealthStatus   `json:"status"`
+	Version         string         `json:"version"`
+	Transport       string         `json:"transport,omitempty"`
+	ProtocolVersion string         `json:"protocol_version,omitempty"`
+	UptimeSeconds   int            `json:"uptime_seconds,omitempty"`
+	ActiveSessions  int            `json:"active_sessions,omitempty"`
 	Capabilities    []DecisionType `json:"capabilities,omitempty"`
-	DegradedReason  string        `json:"degraded_reason,omitempty"`
-	Error           string        `json:"error,omitempty"`
+	DegradedReason  string         `json:"degraded_reason,omitempty"`
+	Error           string         `json:"error,omitempty"`
 }
 
 // SessionStatus enumerates session lifecycle states.
