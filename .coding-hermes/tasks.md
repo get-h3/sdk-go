@@ -25,7 +25,7 @@
 
 **Execution Order:** NEVER-DONE audit only (PERF-ND-01 already completed in prior tick).
 
-**Escalation Conditions:** Project feature-complete, board empty. Scheduler CooldownS=1800 (30m). Last active task marked complete. Idle tick #7 (exceeded escalation threshold at tick #6). **ESCALATION ACTIVE — Tick #40 recommends Bane review for disable/archive.**
+**Escalation Conditions:** Project feature-complete, board empty. Scheduler CooldownS=1800 (30m). Last active task marked complete. Idle tick #7 (exceeded escalation threshold at tick #6). **ESCALATION ACTIVE — Tick #42 recommends Bane review for disable/archive.**
 
 ## Completed
 
@@ -50,26 +50,26 @@
 
 ||> Tick #38: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%). CI green (last cc4b66d ✅). GitReins dual-source check: all 4 tasks complete, 0 pending — no fabrication. Hilo: 94 edges, 18 files, useful. DuckBrain: namespace exists, list_keys connection error (intermittent, same as prior ticks). Git status: clean. 0 TODOs/FIXMEs. No outdated deps. Benchmarks present. Project feature-complete, board empty. **Scheduler API: CooldownS=1800** (NOT 43200 as prior board header claimed — board drift corrected). Idle tick #5. Escalation threshold: not yet exceeded (need >5).
 
-|| Tick #41 — 2026-07-26 08:11 UTC (DeepSeek V4 Flash)
+||| Tick #42 — 2026-07-26 08:45 UTC (DeepSeek V4 Flash)
 
-|| # | Gate | Result | Detail |
-||---|------|--------|--------|
-|| 1 | Git status | ✅ PASS | Clean — no staged, untracked, or modified. Last commit: board update Tick #40 |
-|| 2 | Build | ✅ PASS | `go build ./...` — 9 packages, 18 files, Go 1.26.5 |
-|| 3 | Tests | ✅ PASS | 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%) |
-|| 4 | go vet | ✅ PASS | All packages clean |
-|| 5 | golangci-lint | ✅ PASS | 0 issues |
-|| 6 | GitReins guard | ✅ PASS | Secrets clean (gitleaks), guard PASS (no staged files) |
-|| 7 | Hilo graph | ✅ PASS | 94 edges, 18 files, useful |
-|| 8 | TODO/FIXME scan | ✅ PASS | 0 matches |
-|| 9 | Deps check | ✅ PASS | No outdated dependencies |
-|| 10 | CI health | ✅ PASS | Last 3 runs all success ✅ (latest: 0d295fb Tick #40, prior: cc4b66d H3-ADAPTER-FIX). Last failure at f7939f9 (Jan 29 — historical, Hilo post-commit hook) |
-|| 11 | GitReins dual-source | ✅ PASS | 4 tasks all complete (qv-sdk-validation, qv-e2e-go-echo, CI-FIX-01, COV-S01), 0 pending. No board drift. |
-|| DB | DuckBrain | ⚠️ Write | tick-41 key written (UUID `16528ee-e1cf-4244-8288-96aa9d1f8dc1`), but list_keys shows connection error (same intermittent issue as prior ticks — write path works, read path unreliable) |
+||| # | Gate | Result | Detail |
+|||---|------|--------|--------|
+||| 1 | Git status | ✅ PASS | Clean — no staged, untracked, or modified. Last commit: board update Tick #41 |
+||| 2 | Build | ✅ PASS | `go build ./...` — 9 packages, 18 files, Go 1.26.5 |
+||| 3 | Tests | ✅ PASS | 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%) |
+||| 4 | go vet | ✅ PASS | All packages clean |
+||| 5 | golangci-lint | ✅ PASS | 0 issues |
+||| 6 | GitReins guard | ✅ PASS | Secrets clean (gitleaks), guard PASS (full suite) |
+||| 7 | Hilo graph | ✅ PASS | 94 edges, 18 files, useful |
+||| 8 | TODO/FIXME scan | ✅ PASS | 0 matches |
+||| 9 | Deps check | ✅ PASS | No outdated dependencies (only stdlib + uuid) |
+||| 10 | CI health | ✅ PASS | Last 3 runs all success ✅ (b3d352c Tick #41, 0d295fb Tick #40, 7a1d018 Tick #39). Last failure at f7939f9 (Jan 29 — historical, Hilo post-commit hook) |
+||| 11 | GitReins dual-source | ✅ PASS | 4 tasks all complete, 0 pending. No board drift. |
+||| DB | DuckBrain | ✅ PASS | tick-42 key written (UUID `048a2067-bf03-49fe-aff2-237eeddf9a20`), list_keys now reachable — 23 keys in sdk-go namespace |
 
 **Scheduler API** (GET /api/v1/projects): `h3-sdk-go-foreman`, Enabled=true, CooldownS=1800, Weight=10, Priority=8. Verified via curl.
 
-**Verdict:** IDLE — Tick #41, Idle tick #8. All 11 NEVER-DONE gates PASS. Project feature-complete, board empty. **ESCALATION STILL ACTIVE** (idle tick #8, threshold at 5). Recommend Bane review: disable foreman or archive project. Continuous idle ticks with no code changes are burning PAYG tokens on audit-only cycles.
+**Verdict:** IDLE — Tick #42, Idle tick #9. All 11 NEVER-DONE gates PASS. Project feature-complete, board empty. **ESCALATION STILL ACTIVE** (idle tick #9, threshold at 5). Recommend Bane review: disable foreman or archive project. Continuous idle ticks with no code changes are burning PAYG tokens on audit-only cycles. DuckBrain connectivity improved this tick (list_keys reachable).
 
 |> Tick #37: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS across 3 packages. CI green (last run cc4b66d ✅, Tick #35+36 board-only commits skipped CI). Hilo: 94 edges, 18 files, useful. DuckBrain: remember() wrote tick-37 key; list_keys intermittent transport error persists. Git status: clean. No TODOs/FIXMEs. No outdated deps. 5 benchmarks confirmed present. Project feature-complete, board empty. Idle tick #4. Escalation: need >5 idle ticks to escalate. Scheduler cooldown 43200s (12h).
 
