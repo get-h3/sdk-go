@@ -88,9 +88,9 @@
 |||| 11 | GitReins dual-source | ✅ PASS | 4 tasks all complete, 0 pending — no fabrication |
 |||| DB | DuckBrain | ⚠️ PARTIAL | tick-43 key written (UUID `dba93794-aaf4-40f0-bb99-0d298e8efb4a`). list_keys intermittent connection error persists (same as prior ticks) |
 ||||
-|**Scheduler API:** h3-sdk-go-foreman, Enabled=true, CooldownS=1800, Weight=10, Priority=8. Verified via curl.
-|
-|**Verdict:** IDLE — Tick #43, Idle tick #10. All 11 NEVER-DONE gates PASS. Project remains feature-complete, board empty. **ESCALATION STILL ACTIVE** (idle tick #10, threshold at 5). Recommending Bane review: disable foreman or archive project. 10 consecutive audit-only ticks burning PAYG tokens with no code changes. DuckBrain write works; list_keys intermittent error persists.
+||**Scheduler API:** h3-sdk-go-foreman, Enabled=true, CooldownS=1800, Weight=10, Priority=8. Verified via script.
+||
+||**Verdict:** IDLE — Tick #44, Idle tick #11. All 11 NEVER-DONE gates PASS. Project remains feature-complete, board empty. **ESCALATION STILL ACTIVE** (idle tick #11, threshold at 5). Recommending Bane review: disable foreman or archive project. 11 consecutive audit-only ticks burning PAYG tokens with no code changes. GitReins pipeline improved this tick (tier2 ai_eval stage added by INFRA-GR-05). DuckBrain: namespace write verified (tick-44 key saved).
 
 ||> Tick #37: NEVER-DONE 11-point audit — ALL PASS.
 
