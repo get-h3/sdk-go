@@ -13,6 +13,9 @@
 *.swp
 *.swo
 
+# Go build artifacts
+/h3-consensus-adapter
+
 # Go build artifacts from examples/
 /echo
 /minimal

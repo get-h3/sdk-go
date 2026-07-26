@@ -34,16 +34,15 @@
 
 | ID | Task | Pri | Cpx | Deps | Tags | Model | Reasoning | Fallback |
 |----|------|-----|-----|------|------|-------|-----------|----------|
-| PERF-ND-01 | Zero Go benchmarks — add Benchmark* functions | Low | 2 | — | ++performance, ++go | Step 3.7 Flash | Benchmark authoring | DeepSeek V4 Flash |
 | NEVER-DONE | 11-point audit sweep | High | 2 | — | ++code-review, +testing | DeepSeek V4 Pro | Audit runs every tick | GLM-5.2 |
 
 **Assumptions:** Go 1.25+. Module path confirmed: `github.com/get-h3/sdk-go`. All 47 tests pass (27 round-trip + 12 validation + 5 UUID + 3 structured-error). Build clean. No external deps (pure stdlib + uuid).
 
-**Routing Notes:** Single remaining task PERF-ND-01 is low priority — mechanical benchmark authoring. Project feature-complete. Board idle.
+**Routing Notes:** Project feature-complete. Board empty (active). Last active task PERF-ND-01 was already done (5 benchmarks existed).
 
-**Execution Order:** PERF-ND-01 → NEVER-DONE.
+**Execution Order:** NEVER-DONE audit only (PERF-ND-01 already completed in prior tick).
 
-**Escalation Conditions:** Project feature-complete. Cooldown at 43200s (12h). Escalate to Bane for project disable if idle persists.
+**Escalation Conditions:** Project feature-complete, board empty. Cooldown at 43200s (12h). Last active task marked complete. Consider escalating to Bane for project disable/archive if idle persists >5 ticks.
 
 ## Completed
 
@@ -63,6 +62,9 @@
 | CI | GitHub Actions: build + test + lint on PR | Medium | 2 | — | DeepSeek V4 Flash |
 | DOC-05 | Missing CONTRIBUTING.md added | Low | 1 | — | DeepSeek V4 Flash |
 | QUAL-01 | 0 TODO/FIXME/HACK markers confirmed | Low | 1 | — | DeepSeek V4 Flash |
+| PERF-ND-01 | Zero Go benchmarks — 5 Benchmark* functions | Low | 2 | 478643e | DeepSeek V4 Pro |
+
+> Tick #34: Fixed CI lint failure (rand.Read errcheck in consensus adapter). Cleaned up untracked binary artifact (added to .gitignore). Populated DuckBrain namespace. PERF-ND-01 marked complete — 5 benchmarks already existed from prior tick but board was stale. Project feature-complete, board empty. Scheduler: cooldown 43200s.
 
 > Tick #33: NEVER-DONE audit. All 11 gates pass. gofmt cleanup (3 files). Fixed: SECURITY.md + CODEOWNERS added, H3-ADAPTER-FIX committed (LastMessage field for consensus text relay). DuckBrain: 3 keys in sdk-go namespace. CI: 3 green runs. Project feature-complete, idle. Scheduler: cooldown 43200s.
 > Committed: H3-ADAPTER-FIX (consensus adapter LastMessage), docs (SECURITY.md, CODEOWNERS), board update.
