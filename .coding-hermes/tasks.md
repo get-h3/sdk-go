@@ -21,11 +21,11 @@
 
 **Assumptions:** Go 1.25+. Module path confirmed: `github.com/get-h3/sdk-go`. All 47 tests pass (27 round-trip + 12 validation + 5 UUID + 3 structured-error). Build clean. No external deps (pure stdlib + uuid).
 
-**Routing Notes:** Project feature-complete. Board empty (active). Last active task PERF-ND-01 was already done (5 benchmarks existed).
+**Routing Notes:** Project feature-complete. Board empty (active). Last active task PERF-ND-01 was already done (5 benchmarks existed). Scheduler: h3-sdk-go-foreman, CooldownS=1800, Enabled=true.
 
 **Execution Order:** NEVER-DONE audit only (PERF-ND-01 already completed in prior tick).
 
-**Escalation Conditions:** Project feature-complete, board empty. Cooldown at 43200s (12h). Last active task marked complete. Consider escalating to Bane for project disable/archive if idle persists >5 ticks.
+**Escalation Conditions:** Project feature-complete, board empty. Scheduler CooldownS=1800 (30m). Last active task marked complete. Idle tick #5 of 5+ before escalation. Consider escalating to Bane for project disable/archive if idle persists >5 ticks.
 
 ## Completed
 
@@ -48,7 +48,9 @@
 | PERF-ND-01 | Zero Go benchmarks — 5 Benchmark* functions | Low | 2 | 478643e | DeepSeek V4 Pro |
 | GITREINS-JUDGE | Configure LLM evaluator for commit quality review | Critical | 1 | — | DeepSeek V4 Flash |
 
-> Tick #37: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS across 3 packages. CI green (last run cc4b66d ✅, Tick #35+36 board-only commits skipped CI). Hilo: 94 edges, 18 files, useful. DuckBrain: remember() wrote tick-37 key; list_keys intermittent transport error persists. Git status: clean. No TODOs/FIXMEs. No outdated deps. 5 benchmarks confirmed present. Project feature-complete, board empty. Idle tick #4. Escalation: need >5 idle ticks to escalate. Scheduler cooldown 43200s (12h).
+|> Tick #38: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%). CI green (last cc4b66d ✅). GitReins dual-source check: all 4 tasks complete, 0 pending — no fabrication. Hilo: 94 edges, 18 files, useful. DuckBrain: namespace exists, list_keys connection error (intermittent, same as prior ticks). Git status: clean. 0 TODOs/FIXMEs. No outdated deps. Benchmarks present. Project feature-complete, board empty. **Scheduler API: CooldownS=1800** (NOT 43200 as prior board header claimed — board drift corrected). Idle tick #5. Escalation threshold: not yet exceeded (need >5).
+
+|> Tick #37: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS across 3 packages. CI green (last run cc4b66d ✅, Tick #35+36 board-only commits skipped CI). Hilo: 94 edges, 18 files, useful. DuckBrain: remember() wrote tick-37 key; list_keys intermittent transport error persists. Git status: clean. No TODOs/FIXMEs. No outdated deps. 5 benchmarks confirmed present. Project feature-complete, board empty. Idle tick #4. Escalation: need >5 idle ticks to escalate. Scheduler cooldown 43200s (12h).
 
 > Tick #36: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/lint all clean. Go 1.26.5. golangci-lint: 0 issues. CI green (last run cc4b66d ✅). GitReins guard PASS (full suite). Hilo: 94 edges across 18 Go files (useful). GITREINS-JUDGE verified configured (check-gitreins-judge.py PASS). DuckBrain: remember() succeeded (tick-36 key written), but read tools (list_keys/recall) show "Connection Error" — same intermittent transport issue as prior ticks. Board: GITREINS-JUDGE marked done. No gap tasks. Project feature-complete, board empty. Idle tick #3. Escalation counter: not yet at threshold (need >5). Scheduler: cooldown 43200s (12h).
 
