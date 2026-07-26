@@ -35,6 +35,7 @@ evaluator:
 
 defaults:
   model: deepseek-v4-flash
+  api_key_env: GITREINS_LLM_API_KEY
   max_iterations: 100
   check_for_updates: true
   update_check_ttl: "24h"
