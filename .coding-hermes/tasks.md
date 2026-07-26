@@ -3,23 +3,6 @@
   All tasks MUST use matrix format: | ID | Task | Pri | Cpx | Deps | Tags | Model | Reasoning | Fallback |
   Before editing this file, load the skill: skill_view(name='coding-hermes-model-router')
   Validate: python3 ~/.hermes/scripts/validate-board-format.py .coding-hermes/tasks.md
-- [ ] **GITREINS-JUDGE — Configure LLM evaluator for commit quality review**
-  | 🔴 Critical | — | — | deepseek-v4-flash @ deepseek-foreman | GITREINS_LLM_API_KEY in ~/.hermes/.env | foreman-direct |
-
-  Run: `python3 ~/.hermes/scripts/check-gitreins-judge.py .` to verify.
-  Default limits (adjust per-project based on codebase size and task complexity):
-  - Fast/small projects: `max_iterations: 50`, `max_time: 10m`, tokens: `0.2M/0.4M`
-  - Large repos (Go monorepos, 100+ files): `max_iterations: 100`, `max_time: 30m`, tokens: `1M/2M`
-  - C++/Rust (slow compiles): `max_time: 30m` minimum
-  - Scheduler/production infra: `max_time: 30m`, tokens: `1M/2M`
-  Supervisor auto-flags projects where limits are too low for codebase size.
-
-| 🔴 Critical | — | — | deepseek-v4-flash @ deepseek-foreman | GITREINS_LLM_API_KEY in ~/.hermes/.env | foreman-direct |
-
-  Run: `python3 ~/.hermes/scripts/check-gitreins-judge.py .` to verify.
-  If missing, create/edit .gitreins/config.yaml with evaluator section using deepseek-v4-flash.
-  This is CRITICAL for code quality — no automated review of worker output without it.
-
   NEVER remove the matrix header row or NEVER-DONE / E2E-001 fixtures.
 -->
 
@@ -63,8 +46,9 @@
 | DOC-05 | Missing CONTRIBUTING.md added | Low | 1 | — | DeepSeek V4 Flash |
 | QUAL-01 | 0 TODO/FIXME/HACK markers confirmed | Low | 1 | — | DeepSeek V4 Flash |
 | PERF-ND-01 | Zero Go benchmarks — 5 Benchmark* functions | Low | 2 | 478643e | DeepSeek V4 Pro |
+| GITREINS-JUDGE | Configure LLM evaluator for commit quality review | Critical | 1 | — | DeepSeek V4 Flash |
 
-> Tick #35: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/lint all clean. CI green (last run cc4b66d ✅). No TODO/FIXME markers. No untracked source files. No outdated deps. GitReins guard PASS (full suite). DuckBrain MCP transport intermittent — namespace exists (sdk-go) but read tools unreachable this tick. Project feature-complete, board empty. Scheduler: cooldown 43200s (idle tick #2).
+> Tick #36: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/lint all clean. Go 1.26.5. golangci-lint: 0 issues. CI green (last run cc4b66d ✅). GitReins guard PASS (full suite). Hilo: 94 edges across 18 Go files (useful). GITREINS-JUDGE verified configured (check-gitreins-judge.py PASS). DuckBrain: remember() succeeded (tick-36 key written), but read tools (list_keys/recall) show "Connection Error" — same intermittent transport issue as prior ticks. Board: GITREINS-JUDGE marked done. No gap tasks. Project feature-complete, board empty. Idle tick #3. Escalation counter: not yet at threshold (need >5). Scheduler: cooldown 43200s (12h).
 
 > Tick #33: NEVER-DONE audit. All 11 gates pass. gofmt cleanup (3 files). Fixed: SECURITY.md + CODEOWNERS added, H3-ADAPTER-FIX committed (LastMessage field for consensus text relay). DuckBrain: 3 keys in sdk-go namespace. CI: 3 green runs. Project feature-complete, idle. Scheduler: cooldown 43200s.
 > Committed: H3-ADAPTER-FIX (consensus adapter LastMessage), docs (SECURITY.md, CODEOWNERS), board update.
