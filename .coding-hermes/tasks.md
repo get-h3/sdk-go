@@ -50,26 +50,26 @@
 
 ||> Tick #38: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%). CI green (last cc4b66d ✅). GitReins dual-source check: all 4 tasks complete, 0 pending — no fabrication. Hilo: 94 edges, 18 files, useful. DuckBrain: namespace exists, list_keys connection error (intermittent, same as prior ticks). Git status: clean. 0 TODOs/FIXMEs. No outdated deps. Benchmarks present. Project feature-complete, board empty. **Scheduler API: CooldownS=1800** (NOT 43200 as prior board header claimed — board drift corrected). Idle tick #5. Escalation threshold: not yet exceeded (need >5).
 
-| Tick #40 — 2026-07-26 07:35 UTC (DeepSeek V4 Flash)
+|| Tick #41 — 2026-07-26 08:11 UTC (DeepSeek V4 Flash)
 
-| # | Gate | Result | Detail |
-|---|------|--------|--------|
-| 1 | Git status | ✅ PASS | Clean — no staged, untracked, or modified |
-| 2 | Build | ✅ PASS | `go build ./...` — 9 packages, 18 files, Go 1.26.5 |
-| 3 | Tests | ✅ PASS | 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%) |
-| 4 | go vet | ✅ PASS | All packages clean |
-| 5 | golangci-lint | ✅ PASS | 0 issues |
-| 6 | GitReins guard | ✅ PASS | Secrets clean, guard PASS |
-| 7 | Hilo graph | ✅ PASS | 94 edges, 18 files, useful |
-| 8 | TODO/FIXME scan | ✅ PASS | 0 matches |
-| 9 | Deps check | ✅ PASS | No outdated dependencies |
-| 10 | CI health | ✅ PASS | Last 3 runs all success ✅ (latest: Tick #37 board commit) |
-| 11 | GitReins dual-source | ✅ PASS | 4 tasks all complete, 0 pending. No board drift. |
-| DB | DuckBrain | ⚠️ Write | tick-40 key written (UUID received), but recall/list_keys show connection error (known intermittent — same as prior ticks) |
+|| # | Gate | Result | Detail |
+||---|------|--------|--------|
+|| 1 | Git status | ✅ PASS | Clean — no staged, untracked, or modified. Last commit: board update Tick #40 |
+|| 2 | Build | ✅ PASS | `go build ./...` — 9 packages, 18 files, Go 1.26.5 |
+|| 3 | Tests | ✅ PASS | 87/87 PASS (protocol 98.0%, harness 84.2%, testbed 81.0%) |
+|| 4 | go vet | ✅ PASS | All packages clean |
+|| 5 | golangci-lint | ✅ PASS | 0 issues |
+|| 6 | GitReins guard | ✅ PASS | Secrets clean (gitleaks), guard PASS (no staged files) |
+|| 7 | Hilo graph | ✅ PASS | 94 edges, 18 files, useful |
+|| 8 | TODO/FIXME scan | ✅ PASS | 0 matches |
+|| 9 | Deps check | ✅ PASS | No outdated dependencies |
+|| 10 | CI health | ✅ PASS | Last 3 runs all success ✅ (latest: 0d295fb Tick #40, prior: cc4b66d H3-ADAPTER-FIX). Last failure at f7939f9 (Jan 29 — historical, Hilo post-commit hook) |
+|| 11 | GitReins dual-source | ✅ PASS | 4 tasks all complete (qv-sdk-validation, qv-e2e-go-echo, CI-FIX-01, COV-S01), 0 pending. No board drift. |
+|| DB | DuckBrain | ⚠️ Write | tick-41 key written (UUID `16528ee-e1cf-4244-8288-96aa9d1f8dc1`), but list_keys shows connection error (same intermittent issue as prior ticks — write path works, read path unreliable) |
 
-**Scheduler:** h3-sdk-go-foreman, Enabled=true, CooldownS=1800 (30m). Matches board header.
+**Scheduler API** (GET /api/v1/projects): `h3-sdk-go-foreman`, Enabled=true, CooldownS=1800, Weight=10, Priority=8. Verified via curl.
 
-**Verdict:** IDLE — Tick #40, Idle tick #7. All 11 NEVER-DONE gates PASS. Project feature-complete. **ESCALATION ACTIVE** — idle tick #7 exceeds the >5 threshold. Recommend Bane review: disable foreman or archive project.
+**Verdict:** IDLE — Tick #41, Idle tick #8. All 11 NEVER-DONE gates PASS. Project feature-complete, board empty. **ESCALATION STILL ACTIVE** (idle tick #8, threshold at 5). Recommend Bane review: disable foreman or archive project. Continuous idle ticks with no code changes are burning PAYG tokens on audit-only cycles.
 
 |> Tick #37: NEVER-DONE 11-point audit — ALL PASS. Build/vet/tests/golangci-lint/gofmt/GitReins guard all clean. Go 1.26.5. Tests: 87/87 PASS across 3 packages. CI green (last run cc4b66d ✅, Tick #35+36 board-only commits skipped CI). Hilo: 94 edges, 18 files, useful. DuckBrain: remember() wrote tick-37 key; list_keys intermittent transport error persists. Git status: clean. No TODOs/FIXMEs. No outdated deps. 5 benchmarks confirmed present. Project feature-complete, board empty. Idle tick #4. Escalation: need >5 idle ticks to escalate. Scheduler cooldown 43200s (12h).
 
