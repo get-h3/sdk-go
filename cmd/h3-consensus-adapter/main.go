@@ -242,7 +242,7 @@ func (a *Adapter) consensusCreateSession(agentName, goal, modelID string) (strin
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var session ConsensusSession
 	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
@@ -266,7 +266,7 @@ func (a *Adapter) consensusSendMessage(sessionID, content string) (map[string]an
 	if err != nil {
 		return nil, fmt.Errorf("send message: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -288,7 +288,7 @@ func (a *Adapter) consensusGetStatus(sessionID string) (*ConsensusStatusResp, er
 	if err != nil {
 		return nil, fmt.Errorf("get status: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var status ConsensusStatusResp
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
@@ -340,7 +340,7 @@ func (a *Adapter) handleHealth(w http.ResponseWriter, r *http.Request) {
 	// Also check Consensus health
 	consensusHealthy := true
 	if resp, err := a.client.Get(a.consensusURL + "/api/v1/health"); err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		consensusHealthy = resp.StatusCode == 200
 	}
 
@@ -349,7 +349,7 @@ func (a *Adapter) handleHealth(w http.ResponseWriter, r *http.Request) {
 		status = "degraded"
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":           status,
 		"version":          "1.0.0",
 		"transport":        "rest",
@@ -495,7 +495,7 @@ func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
 
 	// Only feed tool results back to Consensus — text_sent is just a poll
 	if req.Result.Type == "tool_result" {
-		a.consensusSendToolResult(consensusID, req.Result.ToolName, req.Result.Success, req.Result.Data)
+		_, _ = a.consensusSendToolResult(consensusID, req.Result.ToolName, req.Result.Success, req.Result.Data)
 	}
 
 	// Poll for response (give Consensus time to process)
@@ -543,7 +543,7 @@ func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Adapter) handleCancel(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
 }
 
 // ============================================================================
@@ -561,7 +561,7 @@ func extractToolCall(result map[string]any) *ToolCall {
 	if toolReqs, ok := result["tool_requests"].([]any); ok && len(toolReqs) > 0 {
 		if tr, ok := toolReqs[0].(map[string]any); ok {
 			name, _ := tr["tool_name"].(string)
-			params, _ := tr["parameters"]
+			params := tr["parameters"]
 			reasoning, _ := result["internal_monologue"].(string)
 			return &ToolCall{Name: name, Params: params, Reasoning: reasoning}
 		}
@@ -571,13 +571,13 @@ func extractToolCall(result map[string]any) *ToolCall {
 
 func writeDecision(w http.ResponseWriter, d Decision) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(d)
+	_ = json.NewEncoder(w).Encode(d)
 }
 
 func writeError(w http.ResponseWriter, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": map[string]string{"code": code, "message": message},
 	})
 }
@@ -668,10 +668,10 @@ func main() {
 		adapter.mu.RUnlock()
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "session not found"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "session not found"})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"session_id": id, "status": "active"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"session_id": id, "status": "active"})
 	})
 
 	addr := fmt.Sprintf(":%d", *port)
