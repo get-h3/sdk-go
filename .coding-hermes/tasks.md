@@ -25,7 +25,7 @@
 
 **Execution Order:** NEVER-DONE audit only (PERF-ND-01 already completed in prior tick).
 
-||**Escalation Conditions:** Project feature-complete, board empty. Scheduler CooldownS=1800 (30m). Last active task marked complete. Idle tick #12 (exceeded escalation threshold at tick #6). **ESCALATION ACTIVE — Tick #45 recommends Bane review for disable/archive.**||
+|||**Escalation Conditions:** Project feature-complete, board empty. Scheduler CooldownS=1800 (30m). Last active task marked complete. Idle tick #17 (exceeded escalation threshold at tick #6). **ESCALATION ACTIVE — Tick #50 recommends Bane review for disable/archive.**||
 
 ## Completed
 
