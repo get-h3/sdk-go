@@ -1,0 +1,6 @@
+CRON_PAUSE_REQUESTED
+Timestamp: 2026-07-28T17:04:00Z
+Tick: 66
+Idle ticks: 33
+Self-disable threshold: 20 (escalation limit 5 + 15)
+Reason: Project feature-complete, board empty, 33 consecutive idle ticks with no code changes. Recommend Bane disable foreman or archive project.
