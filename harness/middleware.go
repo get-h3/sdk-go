@@ -3,7 +3,8 @@
 package harness
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -43,11 +44,19 @@ func withMiddleware(next http.Handler) http.Handler {
 
 		defer func() {
 			if rec := recover(); rec != nil {
-				log.Printf("harness: PANIC recovered: %v\n%s", rec, debug.Stack())
+				slog.Error("harness: panic recovered",
+					"error", fmt.Sprintf("%v", rec),
+					"stack", string(debug.Stack()),
+				)
 				http.Error(rw.ResponseWriter, "internal server error", http.StatusInternalServerError)
 				rw.statusCode = http.StatusInternalServerError
 			}
-			log.Printf("harness: %s %s %d %s", r.Method, r.URL.Path, rw.statusCode, time.Since(start))
+			slog.Info("request completed",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", rw.statusCode,
+				"duration", time.Since(start).String(),
+			)
 		}()
 
 		h.ServeHTTP(rw, r)
