@@ -15,6 +15,7 @@
 
 # Go build artifacts
 /h3-consensus-adapter
+/cmd/h3-consensus-adapter/h3-consensus-adapter
 
 # Go build artifacts from examples/
 /echo
