@@ -96,3 +96,5 @@
 {"from":"examples/conformance/main.go","to":"std:log","rel":"imports","provenance":"ast_exact","confidence":1.0}
 {"from":"protocol/validate_test.go","to":"protocol/validate.go","rel":"tested_by","provenance":"heuristic","confidence":0.8}
 {"from":"protocol/validate.go","to":"protocol/validate_test.go","rel":"tests","provenance":"heuristic","confidence":0.8}
+{"from":"harness/middleware.go","to":"std:fmt","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"harness/middleware.go","to":"std:log/slog","rel":"imports","provenance":"ast_exact","confidence":1.0}
