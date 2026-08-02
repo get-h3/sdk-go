@@ -29,3 +29,8 @@ examples/consensus/consensus-server
 .DS_Store
 Thumbs.db
 .gitreins/tasks.yaml
+
+# DuckDB board local cache (rebuildable from parquet)
+.coding-hermes/board/board.db
+.coding-hermes/board/board.db.wal
+.coding-hermes/board/*.jsonl
