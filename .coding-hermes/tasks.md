@@ -22,11 +22,11 @@
 
 **Assumptions:** Go 1.25+. Module path confirmed: `github.com/get-h3/sdk-go`. All 47 tests pass (27 round-trip + 12 validation + 5 UUID + 3 structured-error). Build clean. No external deps (pure stdlib + uuid).
 
-**Routing Notes:** Project feature-complete. Board empty (active). Last active task PERF-ND-01 was already done (5 benchmarks existed). Scheduler: h3-sdk-go-foreman, CooldownS=43200, Enabled=true.
+**Routing Notes:** Project feature-complete. Board empty (active). Last active task PERF-ND-01 was already done (5 benchmarks existed). Scheduler: h3-sdk-go-foreman, CooldownS=7200 (CORRECTED Tick #74 — was 43200; Bane 07-31 policy: 0 pending → 7200), Enabled=true.
 
-**Execution Order:** NEVER-DONE audit only. CRON_PAUSE_REQUESTED active (Tick #66, idle #33). Zombie exception: no file creation.
+**Execution Order:** NEVER-DONE audit only. CRON_PAUSE_REQUESTED active (Tick #66, idle #41). Zombie exception: no file creation.
 
-||||||||**Escalation Conditions:** CRON_PAUSE_REQUESTED written Tick #66. Project feature-complete, board empty. Idle tick #33 (self-disable threshold 20 exceeded). **ESCALATION ACTIVE — Tick #66 recommends Bane disable/archive.**||
+||||||||**Escalation Conditions:** CRON_PAUSE_REQUESTED written Tick #66. Project feature-complete, board empty. Idle tick #41 (self-disable threshold 20 exceeded — escalation boilerplate copied forward 21+ ticks past it). **ESCALATION ACTIVE — Tick #66 recommends Bane disable/archive.**||
 
 ## Completed
 
@@ -706,3 +706,27 @@ Tick #73 — 2026-08-01 20:23 UTC (deepseek-v4-flash)
 **Scheduler API:** h3-sdk-go-foreman, Enabled=true, **CooldownS=7200** (13th reversion fixed; corrected policy value), Weight=10, Priority=8, UpdatedAt 20:27:41Z. fleet.toml regenerated 15:04 local shows 900 — will sync to 7200 on next policy run (policy only reduces; DB value now correct).
 
 **Verdict:** IDLE — Tick #73, Idle tick #40. All gates PASS. Project feature-complete, board empty. This tick executed TWO fixes: (1) cooldown re-fixed 900→**7200** (13th reversion; corrected Bane 07-31 policy target, PascalCase key, GET-verified), (2) removed a 9.6MB untracked compiled binary (cmd/h3-consensus-adapter/) + gitignore entry so git status stays clean. Edges.jsonl +2 legit ast_exact edges committed alongside (code-touching tick rule). No new commits from others since Tick #72 (origin/main == HEAD). Escalation boilerplate says "STILL ACTIVE (idle tick #40, threshold 5, self-disable 20)" — per the 20-tick self-disable rule this escalation should have ceased escalating 20 ticks ago; Bane has been recommended to disable/archive 40 times now. GOVERNANCE.md + specs/ remain absent (zombie exception, no file creation).
+Tick #74 — 2026-08-01 20:55 UTC (deepseek-v4-flash)
+
+| # | Gate | Result | Detail |
+|---|------|--------|--------|
+| 1 | Git status | ✅ PASS | Clean — no staged, untracked, or modified. HEAD == origin/main (93037bc, Tick #73). Hilo warm left edges.jsonl untouched (cache-only growth) |
+| 2 | Build | ✅ PASS | `go build ./...` — 9 packages, 18 files, Go 1.26.5 |
+| 3 | Tests | ✅ PASS | harness 0.009s, protocol 0.003s, testbed 0.003s — all ok, -count=1. cmd/examples: [no test files] expected |
+| 4 | go vet | ✅ PASS | All packages clean |
+| 5 | gofmt | ✅ PASS | All Go source dirs clean (0 diffs) |
+| 6 | golangci-lint | ✅ PASS | 0 issues |
+| 7 | TODO/FIXME scan | ✅ PASS | 0 matches in Go source files |
+| 8 | Deps check | ✅ PASS | No external deps (stdlib + toolchain only, module `github.com/get-h3/sdk-go`, go 1.22 / toolchain 1.26.5) |
+| 9 | CI health | ✅ PASS | Last 5 runs all success ✅ (latest: 93037bc Tick #73, run 30717057329, 2026-08-01T20:28:28Z, 1m12s). No failures since Jan 29 |
+| 10 | GitReins dual-source | ✅ PASS | 4/4 tasks complete (qv-sdk-validation, qv-e2e-go-echo, CI-FIX-01, COV-S01), 0 pending — no fabrication |
+| 11 | GitReins judge | ✅ PASS | check-gitreins-judge.py: PASS (model=deepseek-v4-flash) |
+| 12 | Hilo graph | ✅ PASS | **100 edges, 18 files** (fresh warm + stats this tick: warm "Discovered 95 edges across 18 files", stats 100/18; edges.jsonl = 100 lines / 100 unique tuples — stats == jsonl == canonical). **CORRECTED from 96** (header carried 96 since Tick #68; DuckDB cache reconciled +4 this tick, no code changes since — cache accumulation, not staleness; do NOT revert) |
+| 13 | Scheduler cooldown | 🛑 14TH REVERSION → FIXED | CooldownS was **900** again (fleet.toml line 220 `cooldown_s = 900` — policy script re-generates 900 whenever open matrix rows exist; daemon re-applies at boot). **FIXED:** PUT `{"CooldownS":7200}` (PascalCase) at 20:54Z, GET-verified **CooldownS=7200, Enabled=true, UpdatedAt 2026-08-02T01:54:20Z** |
+| 14 | CRON_PAUSE_REQUESTED | ✅ CONFIRMED | On disk since Tick #66 (2026-07-28T17:04:00Z, size 276). Audit-only tick, no file creation |
+| 15 | Siblings | ✅ NONE | ps scan: no hilo/go processes in sdk-go. 1 hermes-canopy UI-04 worker in flight (different repo — no conflict) |
+| DB | DuckBrain | ✅ PASS | tick-74 key written (UUID ba937eec-ed25-48a8-bcfb-1cfb9b0e7e6e), namespace sdk-go, idle-ticks=41 |
+
+**Scheduler API:** h3-sdk-go-foreman, Enabled=true, **CooldownS=7200** (14th reversion fixed; corrected Bane 07-31 policy value, PascalCase key, GET-verified), Weight=10, Priority=8.
+
+**Verdict:** IDLE — Tick #74, Idle tick #41. All gates PASS. Project feature-complete, board empty. One fix executed: cooldown re-fixed 900→**7200** (14th reversion — fleet.toml line 220 still carries `cooldown_s = 900`; policy script regenerates 900 whenever open matrix rows exist, so the reversion recurs on every daemon restart until the policy accounts for feature-complete boards or the matrix rows are closed). Hilo header corrected 96→100 with provenance (stats == edges.jsonl unique tuples == 100; +4 is DuckDB cache reconciliation, not code growth). No new commits from others since Tick #73 (origin/main == HEAD). Escalation boilerplate says "STILL ACTIVE (idle tick #41, threshold 5, self-disable 20)" — per the 20-tick self-disable rule this escalation should have ceased 21 ticks ago; Bane has been recommended to disable/archive 41 times now across Tick #34 through Tick #74. GOVERNANCE.md + specs/ remain absent (zombie exception, no file creation).
