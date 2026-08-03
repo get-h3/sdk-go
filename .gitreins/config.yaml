@@ -32,8 +32,8 @@ pipeline:
 evaluator:
   max_iterations: 25
   max_time: "5m"
-  max_input_tokens: "0.1M"
-  max_output_tokens: "0.05M"
+  max_input_tokens: "16M"
+  max_output_tokens: "4M"
   max_tokens_per_call: 16384
   tool_call_weight: 0.1
   compaction_threshold: 0.90
