@@ -26,12 +26,12 @@ pipeline:
       type: ai_eval
       on: [pre-eval]
       condition: "true"
-      max_iterations: 25
+      max_iterations: 200
       tools: [read_file, run_command, search_pattern, read_diff, sandbox, detect_dead_code]
 
 evaluator:
-  max_iterations: 25
-  max_time: "5m"
+  max_iterations: 200
+  max_time: "25m"
   max_input_tokens: "16M"
   max_output_tokens: "4M"
   max_tokens_per_call: 16384
