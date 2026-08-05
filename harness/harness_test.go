@@ -408,6 +408,27 @@ func TestCancelEndpoint(t *testing.T) {
 	if !m.cancelCalled {
 		t.Error("OnCancel was not called")
 	}
+
+	// GAP-003: response body must match the OpenAPI contract —
+	// {"cancelled": true, "cancelled_decision_id": "..."}.
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read cancel response body: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatalf("decode cancel response: %v", err)
+	}
+	if _, ok := fields["cancelled_decision_id"]; !ok {
+		t.Error("expected cancelled_decision_id key in cancel response body")
+	}
+	var cr protocol.CancelResponse
+	if err := json.Unmarshal(raw, &cr); err != nil {
+		t.Fatalf("decode cancel response into CancelResponse: %v", err)
+	}
+	if !cr.Cancelled {
+		t.Errorf("expected cancelled=true, got %v", cr.Cancelled)
+	}
 }
 
 func TestGetSessionEndpoint(t *testing.T) {
@@ -503,11 +524,56 @@ func TestDeleteSessionEndpoint(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusNoContent {
-		t.Errorf("expected 204, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 	if m.terminateCalled != "sess-d1" {
 		t.Errorf("expected OnSessionTerminate called with sess-d1, got %q", m.terminateCalled)
+	}
+
+	// GAP-003: response body must match the OpenAPI contract —
+	// {"terminated": true, "session_id": "sess-d1"} with HTTP 200.
+	var tr protocol.SessionTerminateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		t.Fatalf("decode session terminate response: %v", err)
+	}
+	if !tr.Terminated {
+		t.Errorf("expected terminated=true, got %v", tr.Terminated)
+	}
+	if tr.SessionID != "sess-d1" {
+		t.Errorf("expected session_id sess-d1, got %q", tr.SessionID)
+	}
+}
+
+func TestDeleteSessionNotFound(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/v1/sessions/does-not-exist", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /v1/sessions/does-not-exist: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+	if m.terminateCalled != "" {
+		t.Errorf("expected OnSessionTerminate NOT called, got %q", m.terminateCalled)
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrSessionNotFound {
+		t.Errorf("expected ErrSessionNotFound, got %q", errResp.Error.Code)
 	}
 }
 

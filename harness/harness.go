@@ -241,7 +241,7 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 		e.Status = "cancelled"
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, protocol.CancelResponse{Cancelled: true, CancelledDecisionID: ""})
 }
 
 // getSessionHandler handles GET /v1/sessions/{id}.
@@ -268,13 +268,20 @@ func (s *server) getSessionHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
+	entry := s.sessions.get(sessionID)
+	if entry == nil {
+		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
+			"session not found: "+sessionID)
+		return
+	}
+
 	if err := s.harness.OnSessionTerminate(sessionID); err != nil {
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternalError, err.Error())
 		return
 	}
 
 	s.sessions.delete(sessionID)
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, protocol.SessionTerminateResponse{Terminated: true, SessionID: sessionID})
 }
 
 // generateUUID creates a UUIDv4 string using crypto/rand.

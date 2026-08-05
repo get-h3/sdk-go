@@ -287,6 +287,18 @@ type SessionResponse struct {
 	CurrentDecisionType DecisionType  `json:"current_decision_type,omitempty"`
 }
 
+// CancelResponse is the response from POST /v1/cancel.
+type CancelResponse struct {
+	Cancelled           bool   `json:"cancelled"`
+	CancelledDecisionID string `json:"cancelled_decision_id"`
+}
+
+// SessionTerminateResponse is the response from DELETE /v1/sessions/{session_id}.
+type SessionTerminateResponse struct {
+	Terminated bool   `json:"terminated"`
+	SessionID  string `json:"session_id"`
+}
+
 // ErrorCode enumerates machine-readable error codes.
 type ErrorCode string
 
