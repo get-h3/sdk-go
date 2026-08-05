@@ -123,6 +123,10 @@ The harness exposes six REST endpoints:
 - [`examples/conformance/`](./examples/conformance/) — Conformance harness: full agent loop (tool_call → result → text → end) for h3-test validation.
 - [`examples/consensus/`](./examples/consensus/) — Consensus reference integration: demonstrates H3 + Consensus for multi-model deliberation.
 
+## Documentation
+
+See [docs/](docs/): [integration-guide](docs/integration-guide.md) (zero-to-production), [api-reference](docs/api-reference.md) (contracts & errors), [examples](docs/examples.md) (example tour).
+
 ## Development
 
 ```bash
