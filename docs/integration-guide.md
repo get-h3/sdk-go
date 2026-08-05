@@ -20,7 +20,7 @@ compliance against your running endpoint.
 Install the compliance tester (Python 3.10+):
 
 ```bash
-pip install hermes-h3-shim
+pip install git+https://github.com/get-h3/shim
 h3-test --help   # confirms install
 ```
 
@@ -246,7 +246,7 @@ Best practices:
 | `400 INVALID_REQUEST` | Battery sends minimal requests | Don't require optional fields; only `session_id`, `message.role`, `identity.platform`, `identity.chat_id` are guaranteed |
 | `500 INVALID_DECISION` | Decision missing its payload | Every `text` decision needs `Text`; every `end` needs `End`; `text.content` must be non-empty |
 | History tests fail | History shrank | Echo `req.Context.History` back verbatim in every decision |
-| `h3-test` not found | Shim not installed | `pip install hermes-h3-shim` |
+| `h3-test` not found | Shim not installed | `pip install git+https://github.com/get-h3/shim` |
 
 ## 8. Deployment notes
 
