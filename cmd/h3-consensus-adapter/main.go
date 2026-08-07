@@ -8,13 +8,17 @@
 //
 //	h3-consensus-adapter --consensus-url http://localhost:8094 --port 9191
 //
-// Hermes → H3 protocol → this adapter → Consensus REST API → agent loop
+// # Hermes → H3 protocol → this adapter → Consensus REST API → agent loop
+//
+// The H3 wire types are imported from github.com/get-h3/sdk-go/protocol (no local
+// duplicates — the protocol package's JSON tags are the wire contract), and the
+// HTTP surface comes from github.com/get-h3/sdk-go/harness (middleware: logging,
+// panic recovery, request timeouts, request/decision validation). This adapter
+// implements harness.Harness and translates H3 requests into Consensus REST calls.
 package main
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -24,6 +28,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/get-h3/sdk-go/harness"
+	"github.com/get-h3/sdk-go/protocol"
 )
 
 // ============================================================================
@@ -37,132 +44,32 @@ var (
 )
 
 // ============================================================================
-// H3 Protocol Types
+// Adapter State
 // ============================================================================
 
-type DecisionType string
-
-const (
-	DecisionToolCall DecisionType = "tool_call"
-	DecisionLLMCall  DecisionType = "llm_call"
-	DecisionText     DecisionType = "text"
-	DecisionWait     DecisionType = "wait"
-	DecisionDelegate DecisionType = "delegate"
-	DecisionEnd      DecisionType = "end"
-)
-
-type Decision struct {
-	Decision   DecisionType `json:"decision"`
-	DecisionID string       `json:"decision_id"`
-	ToolCall   *ToolCall    `json:"tool_call,omitempty"`
-	LLMCall    *LLMCall     `json:"llm_call,omitempty"`
-	Text       *TextResp    `json:"text,omitempty"`
-	Wait       *Wait        `json:"wait,omitempty"`
-	Delegate   *Delegate    `json:"delegate,omitempty"`
-	End        *End         `json:"end,omitempty"`
+// Adapter implements harness.Harness and translates H3 protocol requests into
+// Consensus REST API calls.
+type Adapter struct {
+	consensusURL string
+	adminKey     string
+	sessions     map[string]string                  // h3_session_id → consensus_session_id
+	histories    map[string][]protocol.HistoryEntry // h3_session_id → last-seen conversation history (for /v1/result passthrough)
+	mu           sync.RWMutex
+	client       *http.Client
 }
 
-type ToolCall struct {
-	Name      string `json:"name"`
-	Params    any    `json:"params"`
-	Reasoning string `json:"reasoning,omitempty"`
-}
-
-type LLMCall struct {
-	Model        string       `json:"model"`
-	SystemPrompt string       `json:"system_prompt,omitempty"`
-	Messages     []LLMMessage `json:"messages"`
-}
-
-type LLMMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type TextResp struct {
-	Content  string `json:"content"`
-	Finished bool   `json:"finished"`
-}
-
-type Wait struct {
-	Reason          string `json:"reason"`
-	DurationSeconds *int   `json:"duration_seconds,omitempty"`
-}
-
-type Delegate struct {
-	Task string `json:"task"`
-}
-
-type End struct {
-	Reason  string `json:"reason"`
-	Summary string `json:"summary,omitempty"`
-}
-
-type ProcessRequest struct {
-	SessionID string   `json:"session_id"`
-	Message   Message  `json:"message"`
-	Identity  Identity `json:"identity"`
-	Context   Context  `json:"context"`
-}
-
-type Message struct {
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Timestamp string `json:"timestamp"`
-}
-
-type Identity struct {
-	Platform string `json:"platform"`
-	ChatID   string `json:"chat_id"`
-	UserName string `json:"user_name"`
-	UserID   string `json:"user_id"`
-}
-
-type Context struct {
-	History      []HistoryEntry `json:"history"`
-	Tools        []any          `json:"tools"`
-	Models       []any          `json:"models"`
-	Memory       string         `json:"memory,omitempty"`
-	Skills       []string       `json:"skills,omitempty"`
-	Config       H3Config       `json:"config"`
-	SessionState H3State        `json:"session_state"`
-}
-
-type HistoryEntry struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type H3Config struct {
-	MaxIterations  int    `json:"max_iterations"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-	ProjectDir     string `json:"project_dir,omitempty"`
-}
-
-type H3State struct {
-	TurnCount      int     `json:"turn_count"`
-	TotalToolCalls int     `json:"total_tool_calls"`
-	TotalLLMCalls  int     `json:"total_llm_calls"`
-	CostSoFar      float64 `json:"cost_so_far"`
-	StartedAt      string  `json:"started_at"`
-}
-
-type ResultRequest struct {
-	SessionID  string `json:"session_id"`
-	DecisionID string `json:"decision_id"`
-	Result     Result `json:"result"`
-}
-
-type Result struct {
-	Type       string  `json:"type"`
-	ToolName   string  `json:"tool_name,omitempty"`
-	Data       any     `json:"data,omitempty"`
-	DurationMs float64 `json:"duration_ms,omitempty"`
-	Success    bool    `json:"success"`
+func NewAdapter(consensusURL, adminKey string) *Adapter {
+	return &Adapter{
+		consensusURL: strings.TrimRight(consensusURL, "/"),
+		adminKey:     adminKey,
+		sessions:     make(map[string]string),
+		histories:    make(map[string][]protocol.HistoryEntry),
+		client:       &http.Client{Timeout: 120 * time.Second},
+	}
 }
 
 // ============================================================================
-// Consensus API Types
+// Consensus API Types (adapter-specific — not part of the H3 protocol)
 // ============================================================================
 
 type ConsensusSession struct {
@@ -197,27 +104,6 @@ type ConsensusIterResp struct {
 
 type ConsensusStmt struct {
 	SQL string `json:"sql,omitempty"`
-}
-
-// ============================================================================
-// Adapter State
-// ============================================================================
-
-type Adapter struct {
-	consensusURL string
-	adminKey     string
-	sessions     map[string]string // h3_session_id → consensus_session_id
-	mu           sync.RWMutex
-	client       *http.Client
-}
-
-func NewAdapter(consensusURL, adminKey string) *Adapter {
-	return &Adapter{
-		consensusURL: strings.TrimRight(consensusURL, "/"),
-		adminKey:     adminKey,
-		sessions:     make(map[string]string),
-		client:       &http.Client{Timeout: 120 * time.Second},
-	}
 }
 
 // ============================================================================
@@ -307,7 +193,7 @@ func (a *Adapter) consensusSendToolResult(sessionID, toolName string, success bo
 // Session Management
 // ============================================================================
 
-func (a *Adapter) getOrCreateSession(req *ProcessRequest) (string, bool, error) {
+func (a *Adapter) getOrCreateSession(req *protocol.ProcessRequest) (string, bool, error) {
 	a.mu.RLock()
 	consensusID, exists := a.sessions[req.SessionID]
 	a.mu.RUnlock()
@@ -332,11 +218,29 @@ func (a *Adapter) getOrCreateSession(req *ProcessRequest) (string, bool, error) 
 	return id, true, nil
 }
 
+// rememberHistory stores the conversation history seen for a session so that
+// decisions returned from /v1/result (which carries no context of its own) can
+// still echo it back — the H3 history-preservation rule: history never shrinks.
+func (a *Adapter) rememberHistory(sessionID string, history []protocol.HistoryEntry) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.histories[sessionID] = history
+}
+
+// historyFor returns the last-seen conversation history for a session.
+func (a *Adapter) historyFor(sessionID string) []protocol.HistoryEntry {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.histories[sessionID]
+}
+
 // ============================================================================
-// H3 Protocol Handlers
+// harness.Harness implementation
 // ============================================================================
 
-func (a *Adapter) handleHealth(w http.ResponseWriter, r *http.Request) {
+// Health implements harness.Harness. Reports ok when the Consensus backend is
+// reachable, degraded otherwise.
+func (a *Adapter) Health() *protocol.HealthResponse {
 	// Also check Consensus health
 	consensusHealthy := true
 	if resp, err := a.client.Get(a.consensusURL + "/api/v1/health"); err == nil {
@@ -344,50 +248,55 @@ func (a *Adapter) handleHealth(w http.ResponseWriter, r *http.Request) {
 		consensusHealthy = resp.StatusCode == 200
 	}
 
-	status := "ok"
+	status := protocol.HealthOK
+	degradedReason := ""
 	if !consensusHealthy {
-		status = "degraded"
+		status = protocol.HealthDegraded
+		degradedReason = "Consensus backend unreachable"
 	}
 
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":           status,
-		"version":          "1.0.0",
-		"transport":        "rest",
-		"protocol_version": "1.0",
-		"capabilities":     []string{"text", "tool_call", "end"},
-	})
+	return &protocol.HealthResponse{
+		Status:          status,
+		Version:         "1.0.0",
+		Transport:       "rest",
+		ProtocolVersion: "1.0",
+		Capabilities:    []protocol.DecisionType{protocol.DecisionText, protocol.DecisionToolCall, protocol.DecisionEnd},
+		DegradedReason:  degradedReason,
+	}
 }
 
-func (a *Adapter) handleProcess(w http.ResponseWriter, r *http.Request) {
-	var req ProcessRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, "INVALID_REQUEST", err.Error())
-		return
-	}
-
+// OnProcess implements harness.Harness: forwards the user message to Consensus
+// and maps the backend state back to an H3 decision. Every decision echoes the
+// request conversation history (history-preservation rule).
+func (a *Adapter) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
 	log.Printf("[H3] PROCESS session=%s user=%s msg=%q", req.SessionID, req.Identity.UserName, trunc(req.Message.Content, 60))
 
+	// History passthrough: every decision echoes the conversation history back
+	// so it never shrinks (H3 history-preservation rule).
+	history := historyPassthrough(req)
+	a.rememberHistory(req.SessionID, history)
+
 	// Get or create Consensus session
-	consensusID, isNew, err := a.getOrCreateSession(&req)
+	consensusID, isNew, err := a.getOrCreateSession(req)
 	if err != nil {
 		log.Printf("[H3] ERROR creating session: %v", err)
-		writeDecision(w, Decision{
-			Decision:   DecisionEnd,
-			DecisionID: newID(),
-			End:        &End{Reason: "error", Summary: err.Error()},
-		})
-		return
+		return &protocol.Decision{
+			Decision:   protocol.DecisionEnd,
+			DecisionID: protocol.GenerateUUID(),
+			History:    history,
+			End:        &protocol.End{Reason: protocol.EndError, Summary: err.Error()},
+		}, nil
 	}
 
 	if isNew {
 		if consensusID == "" {
 			log.Printf("[H3] ERROR: got empty consensus session ID")
-			writeDecision(w, Decision{
-				Decision:   DecisionEnd,
-				DecisionID: newID(),
-				End:        &End{Reason: "error", Summary: "backend returned empty session ID"},
-			})
-			return
+			return &protocol.Decision{
+				Decision:   protocol.DecisionEnd,
+				DecisionID: protocol.GenerateUUID(),
+				History:    history,
+				End:        &protocol.End{Reason: protocol.EndError, Summary: "backend returned empty session ID"},
+			}, nil
 		}
 		log.Printf("[H3] New Consensus session: %s → %s (goal: %q)", req.SessionID, consensusID[:12], trunc(req.Message.Content, 60))
 	}
@@ -396,12 +305,12 @@ func (a *Adapter) handleProcess(w http.ResponseWriter, r *http.Request) {
 	result, err := a.consensusSendMessage(consensusID, req.Message.Content)
 	if err != nil {
 		log.Printf("[H3] ERROR sending message: %v", err)
-		writeDecision(w, Decision{
-			Decision:   DecisionEnd,
-			DecisionID: newID(),
-			End:        &End{Reason: "error", Summary: err.Error()},
-		})
-		return
+		return &protocol.Decision{
+			Decision:   protocol.DecisionEnd,
+			DecisionID: protocol.GenerateUUID(),
+			History:    history,
+			End:        &protocol.End{Reason: protocol.EndError, Summary: err.Error()},
+		}, nil
 	}
 
 	// Check session status after sending
@@ -411,7 +320,7 @@ func (a *Adapter) handleProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build H3 decision based on Consensus response
-	decisionID := newID()
+	decisionID := protocol.GenerateUUID()
 	content := strings.ToLower(req.Message.Content)
 
 	// Streaming detection: certain user prompts signal the harness should
@@ -432,69 +341,70 @@ func (a *Adapter) handleProcess(w http.ResponseWriter, r *http.Request) {
 		}
 
 		finished := !streamingHint
-		writeDecision(w, Decision{
-			Decision:   DecisionText,
+		return &protocol.Decision{
+			Decision:   protocol.DecisionText,
 			DecisionID: decisionID,
-			Text:       &TextResp{Content: responseText, Finished: finished},
-		})
-		return
+			History:    history,
+			Text:       &protocol.TextResp{Content: responseText, Finished: finished},
+		}, nil
 	}
 
 	// If session is still thinking, return intermediate text
 	if status != nil && status.Status == "thinking" {
-		writeDecision(w, Decision{
-			Decision:   DecisionText,
+		return &protocol.Decision{
+			Decision:   protocol.DecisionText,
 			DecisionID: decisionID,
-			Text:       &TextResp{Content: "Consensus agent is processing your request...", Finished: false},
-		})
-		return
+			History:    history,
+			Text:       &protocol.TextResp{Content: "Consensus agent is processing your request...", Finished: false},
+		}, nil
 	}
 
 	// Check if the result contains a tool call indicator
-	responseText := fmt.Sprintf("%v", result)
 	if isToolCallResponse(result) {
-		tc := extractToolCall(result)
-		writeDecision(w, Decision{
-			Decision:   DecisionToolCall,
-			DecisionID: decisionID,
-			ToolCall:   tc,
-		})
-		return
+		if tc := extractToolCall(result); tc != nil {
+			return &protocol.Decision{
+				Decision:   protocol.DecisionToolCall,
+				DecisionID: decisionID,
+				History:    history,
+				ToolCall:   tc,
+			}, nil
+		}
 	}
 
 	// Default: text response
-	writeDecision(w, Decision{
-		Decision:   DecisionText,
+	return &protocol.Decision{
+		Decision:   protocol.DecisionText,
 		DecisionID: decisionID,
-		Text:       &TextResp{Content: responseText, Finished: status != nil && status.Status == "idle"},
-	})
+		History:    history,
+		Text:       &protocol.TextResp{Content: fmt.Sprintf("%v", result), Finished: status != nil && status.Status == "idle"},
+	}, nil
 }
 
-func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
-	var req ResultRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, "INVALID_REQUEST", err.Error())
-		return
-	}
-
+// OnResult implements harness.Harness: feeds tool results back to Consensus and
+// returns the next decision, echoing the session's conversation history.
+func (a *Adapter) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
 	log.Printf("[H3] RESULT session=%s decision=%s type=%s tool=%s success=%v",
-		req.SessionID, req.DecisionID[:12], req.Result.Type, req.Result.ToolName, req.Result.Success)
+		req.SessionID, trunc(req.DecisionID, 12), req.Result.Type, req.Result.ToolName, req.Result.Success)
 
 	a.mu.RLock()
 	consensusID, ok := a.sessions[req.SessionID]
 	a.mu.RUnlock()
 
+	// Echo the session's conversation history so it never shrinks
+	// (/v1/result carries no context of its own).
+	history := a.historyFor(req.SessionID)
+
 	if !ok {
-		writeDecision(w, Decision{
-			Decision:   DecisionEnd,
-			DecisionID: newID(),
-			End:        &End{Reason: "error", Summary: "session not found"},
-		})
-		return
+		return &protocol.Decision{
+			Decision:   protocol.DecisionEnd,
+			DecisionID: protocol.GenerateUUID(),
+			History:    history,
+			End:        &protocol.End{Reason: protocol.EndError, Summary: "session not found"},
+		}, nil
 	}
 
 	// Only feed tool results back to Consensus — text_sent is just a poll
-	if req.Result.Type == "tool_result" {
+	if req.Result.Type == protocol.ResultTool {
 		_, _ = a.consensusSendToolResult(consensusID, req.Result.ToolName, req.Result.Success, req.Result.Data)
 	}
 
@@ -503,15 +413,15 @@ func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
 
 	status, err := a.consensusGetStatus(consensusID)
 	if err != nil {
-		writeDecision(w, Decision{
-			Decision:   DecisionEnd,
-			DecisionID: newID(),
-			End:        &End{Reason: "error", Summary: err.Error()},
-		})
-		return
+		return &protocol.Decision{
+			Decision:   protocol.DecisionEnd,
+			DecisionID: protocol.GenerateUUID(),
+			History:    history,
+			End:        &protocol.End{Reason: protocol.EndError, Summary: err.Error()},
+		}, nil
 	}
 
-	decisionID := newID()
+	decisionID := protocol.GenerateUUID()
 
 	if status.Status == "idle" || status.Status == "completed" {
 		var summary string
@@ -527,23 +437,35 @@ func (a *Adapter) handleResult(w http.ResponseWriter, r *http.Request) {
 		// Return DecisionText with Finished: true so the response text is in
 		// Text.Content where the H3 client displays it — NOT End.Summary which
 		// is informational and not rendered by most H3 clients.
-		writeDecision(w, Decision{
-			Decision:   DecisionText,
+		return &protocol.Decision{
+			Decision:   protocol.DecisionText,
 			DecisionID: decisionID,
-			Text:       &TextResp{Content: summary, Finished: true},
-		})
-		return
+			History:    history,
+			Text:       &protocol.TextResp{Content: summary, Finished: true},
+		}, nil
 	}
 
-	writeDecision(w, Decision{
-		Decision:   DecisionText,
+	return &protocol.Decision{
+		Decision:   protocol.DecisionText,
 		DecisionID: decisionID,
-		Text:       &TextResp{Content: fmt.Sprintf("Processing... (%s)", status.Status), Finished: false},
-	})
+		History:    history,
+		Text:       &protocol.TextResp{Content: fmt.Sprintf("Processing... (%s)", status.Status), Finished: false},
+	}, nil
 }
 
-func (a *Adapter) handleCancel(w http.ResponseWriter, r *http.Request) {
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+// OnCancel implements harness.Harness.
+func (a *Adapter) OnCancel(req *protocol.CancelRequest) error {
+	return nil
+}
+
+// OnSessionTerminate implements harness.Harness: drops the Consensus session
+// mapping so a later /v1/process starts a fresh backend session.
+func (a *Adapter) OnSessionTerminate(sessionID string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.sessions, sessionID)
+	delete(a.histories, sessionID)
+	return nil
 }
 
 // ============================================================================
@@ -557,29 +479,16 @@ func isToolCallResponse(result map[string]any) bool {
 	return false
 }
 
-func extractToolCall(result map[string]any) *ToolCall {
+func extractToolCall(result map[string]any) *protocol.ToolCall {
 	if toolReqs, ok := result["tool_requests"].([]any); ok && len(toolReqs) > 0 {
 		if tr, ok := toolReqs[0].(map[string]any); ok {
 			name, _ := tr["tool_name"].(string)
 			params := tr["parameters"]
 			reasoning, _ := result["internal_monologue"].(string)
-			return &ToolCall{Name: name, Params: params, Reasoning: reasoning}
+			return &protocol.ToolCall{Name: name, Params: params, Reasoning: reasoning}
 		}
 	}
 	return nil
-}
-
-func writeDecision(w http.ResponseWriter, d Decision) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(d)
-}
-
-func writeError(w http.ResponseWriter, code, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]string{"code": code, "message": message},
-	})
 }
 
 func trunc(s string, maxLen int) string {
@@ -587,16 +496,6 @@ func trunc(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
-}
-
-func newID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		panic("failed to generate random ID: " + err.Error())
-	}
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return hex.EncodeToString(b)
 }
 
 // streamingDetected returns true if the user message content hints at
@@ -618,6 +517,17 @@ func streamingDetected(content string) bool {
 	return false
 }
 
+// historyPassthrough copies the conversation history from the request context
+// so every decision can echo it back unchanged — the H3 history-preservation
+// rule (h3-test process_preserves_history): the history never shrinks.
+func historyPassthrough(req *protocol.ProcessRequest) []protocol.HistoryEntry {
+	history := make([]protocol.HistoryEntry, len(req.Context.History))
+	for i, entry := range req.Context.History {
+		history[i] = protocol.HistoryEntry{Role: entry.Role, Content: entry.Content}
+	}
+	return history
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -631,56 +541,13 @@ func main() {
 	}
 	adapter := NewAdapter(*consensusURL, key)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		adapter.handleHealth(w, r)
-	})
-	mux.HandleFunc("/v1/process", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		adapter.handleProcess(w, r)
-	})
-	mux.HandleFunc("/v1/result", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		adapter.handleResult(w, r)
-	})
-	mux.HandleFunc("/v1/cancel", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		adapter.handleCancel(w, r)
-	})
-	mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		// Extract session id from path: /v1/sessions/{id}
-		id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
-		adapter.mu.RLock()
-		_, ok := adapter.sessions[id]
-		adapter.mu.RUnlock()
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "session not found"})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"session_id": id, "status": "active"})
-	})
-
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("[H3] Consensus adapter starting on %s", addr)
 	log.Printf("[H3] Consensus backend: %s", *consensusURL)
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	// harness.NewHTTPServer wires all H3 endpoints (health/process/result/
+	// cancel/sessions) with logging, panic recovery, timeouts, and validation.
+	if err := http.ListenAndServe(addr, harness.NewHTTPServer(adapter)); err != nil {
 		log.Fatalf("[H3] server error: %v", err)
 	}
 }
