@@ -1039,6 +1039,138 @@ func TestSessionObservability_CancelNoDecisionInFlight(t *testing.T) {
 	close(bh.release)
 }
 
+// TestSessionLifecycle_ResultEndMarksCompleted (GAP-DOG-003):
+// process -> harness returns text -> POST /v1/result with harness returning
+// DecisionEnd -> GET session -> status "completed". Also assert
+// current_decision is still populated (GAP-009 regression guard).
+func TestSessionLifecycle_ResultEndMarksCompleted(t *testing.T) {
+	m := newMockHarness()
+	m.onProcessDec = &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-lc1-proc",
+		Text:       &protocol.TextResp{Content: "thinking...", Finished: false},
+	}
+	m.onResultDec = &protocol.Decision{
+		Decision:   protocol.DecisionEnd,
+		DecisionID: "dec-lc1-end",
+		End:        &protocol.End{Reason: protocol.EndTaskComplete, Summary: "done"},
+	}
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	postProcess(t, ts, "sess-lc1")
+
+	resultBody := `{
+		"session_id": "sess-lc1",
+		"decision_id": "dec-lc1-proc",
+		"result": {"type": "tool_result", "tool_name": "test", "success": true}
+	}`
+	resp, err := http.Post(ts.URL+"/v1/result", "application/json", strings.NewReader(resultBody))
+	if err != nil {
+		t.Fatalf("POST /v1/result: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var resDec protocol.Decision
+	if err := json.NewDecoder(resp.Body).Decode(&resDec); err != nil {
+		t.Fatalf("decode result decision: %v", err)
+	}
+	if resDec.Decision != protocol.DecisionEnd {
+		t.Fatalf("expected decision end, got %q", resDec.Decision)
+	}
+
+	sr := getSession(t, ts, "sess-lc1")
+	if sr.Status != protocol.SessionCompleted {
+		t.Errorf("expected status %q, got %q", protocol.SessionCompleted, sr.Status)
+	}
+	// GAP-009 regression guard: current_decision must still be populated.
+	if sr.CurrentDecision != "dec-lc1-end" {
+		t.Errorf("expected current_decision dec-lc1-end, got %q", sr.CurrentDecision)
+	}
+	if sr.CurrentDecisionType != protocol.DecisionEnd {
+		t.Errorf("expected current_decision_type %q, got %q", protocol.DecisionEnd, sr.CurrentDecisionType)
+	}
+}
+
+// TestSessionLifecycle_ProcessEndMarksCompleted (GAP-DOG-003):
+// harness returns DecisionEnd directly from OnProcess -> GET session ->
+// status "completed".
+func TestSessionLifecycle_ProcessEndMarksCompleted(t *testing.T) {
+	m := newMockHarness()
+	m.onProcessDec = &protocol.Decision{
+		Decision:   protocol.DecisionEnd,
+		DecisionID: "dec-lc2-end",
+		End:        &protocol.End{Reason: protocol.EndTaskComplete, Summary: "done"},
+	}
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	dec := postProcess(t, ts, "sess-lc2")
+	if dec.Decision != protocol.DecisionEnd {
+		t.Fatalf("expected decision end, got %q", dec.Decision)
+	}
+
+	sr := getSession(t, ts, "sess-lc2")
+	if sr.Status != protocol.SessionCompleted {
+		t.Errorf("expected status %q, got %q", protocol.SessionCompleted, sr.Status)
+	}
+	if sr.CurrentDecision != "dec-lc2-end" {
+		t.Errorf("expected current_decision dec-lc2-end, got %q", sr.CurrentDecision)
+	}
+}
+
+// TestSessionLifecycle_NonEndKeepsActive (GAP-DOG-003):
+// text decision via result -> GET session -> status "active" (no premature
+// completion).
+func TestSessionLifecycle_NonEndKeepsActive(t *testing.T) {
+	m := newMockHarness()
+	m.onProcessDec = &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-lc3-proc",
+		Text:       &protocol.TextResp{Content: "thinking...", Finished: false},
+	}
+	m.onResultDec = &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-lc3-text",
+		Text:       &protocol.TextResp{Content: "final answer", Finished: true},
+	}
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	postProcess(t, ts, "sess-lc3")
+
+	resultBody := `{
+		"session_id": "sess-lc3",
+		"decision_id": "dec-lc3-proc",
+		"result": {"type": "tool_result", "tool_name": "test", "success": true}
+	}`
+	resp, err := http.Post(ts.URL+"/v1/result", "application/json", strings.NewReader(resultBody))
+	if err != nil {
+		t.Fatalf("POST /v1/result: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var resDec protocol.Decision
+	if err := json.NewDecoder(resp.Body).Decode(&resDec); err != nil {
+		t.Fatalf("decode result decision: %v", err)
+	}
+	if resDec.Decision != protocol.DecisionText {
+		t.Fatalf("expected decision text, got %q", resDec.Decision)
+	}
+
+	sr := getSession(t, ts, "sess-lc3")
+	if sr.Status != protocol.SessionActive {
+		t.Errorf("expected status %q, got %q", protocol.SessionActive, sr.Status)
+	}
+}
+
 // BenchmarkHandlerProcess measures end-to-end handler latency for a POST /v1/process request.
 func BenchmarkHandlerProcess(b *testing.B) {
 	m := newMockHarness()

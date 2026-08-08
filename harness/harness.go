@@ -191,9 +191,14 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GAP-009: record the finalized decision so GET /v1/sessions/{id} and
 	// POST /v1/cancel can report what was in flight.
+	// GAP-DOG-003: transition session status to completed when the harness
+	// returns DecisionEnd from OnProcess.
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
 		e.CurrentDecisionID = decision.DecisionID
 		e.CurrentDecisionType = decision.Decision
+		if decision.Decision == protocol.DecisionEnd {
+			e.Status = "completed"
+		}
 	})
 
 	writeJSON(w, http.StatusOK, decision)
@@ -237,9 +242,14 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GAP-009: record the finalized decision so GET /v1/sessions/{id} and
 	// POST /v1/cancel can report what was in flight.
+	// GAP-DOG-003: transition session status to completed when the harness
+	// returns DecisionEnd from OnResult.
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
 		e.CurrentDecisionID = decision.DecisionID
 		e.CurrentDecisionType = decision.Decision
+		if decision.Decision == protocol.DecisionEnd {
+			e.Status = "completed"
+		}
 	})
 
 	writeJSON(w, http.StatusOK, decision)
