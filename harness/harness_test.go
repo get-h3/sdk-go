@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/get-h3/sdk-go/protocol"
 )
@@ -623,6 +624,77 @@ func TestMethodNotAllowed(t *testing.T) {
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", resp.StatusCode)
 	}
+}
+
+// TestHarnessTimeout verifies that a handler exceeding the deadline returns
+// HTTP 504 with a JSON ErrorResponse containing code HARNESS_TIMEOUT.
+func TestHarnessTimeout(t *testing.T) {
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"slow":"should be discarded"}`))
+	})
+	// 100ms deadline vs 500ms sleep — generous deterministic margin.
+	handler := withMiddlewareTimeout(slow, 100*time.Millisecond)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/v1/process", "application/json",
+		strings.NewReader(`{"session_id":"sess-to","message":{"role":"user","content":"hi","timestamp":"2026-01-01T00:00:00Z"},"identity":{"platform":"test","chat_id":"c","user_name":"u","user_id":"u"},"context":{"history":[],"tools":[],"models":[],"config":{"max_iterations":10,"timeout_seconds":30},"session_state":{"turn_count":0,"total_tool_calls":0,"total_llm_calls":0,"cost_so_far":0,"started_at":"2026-01-01T00:00:00Z"}}}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusGatewayTimeout {
+		t.Fatalf("expected 504, got %d", resp.StatusCode)
+	}
+
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode ErrorResponse: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrHarnessTimeout {
+		t.Errorf("expected code %q, got %q", protocol.ErrHarnessTimeout, errResp.Error.Code)
+	}
+	if errResp.Error.Message == "" {
+		t.Error("expected non-empty message")
+	}
+}
+
+// TestHarnessTimeout_NoTimeout verifies that a handler finishing before the
+// deadline returns its normal response through the timeout wrapper.
+func TestHarnessTimeout_NoTimeout(t *testing.T) {
+	fast := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	handler := withMiddlewareTimeout(fast, 1*time.Second)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/v1/health")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !bytes_contains(body, `{"ok":true}`) {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+// bytes_contains is a tiny helper to avoid importing bytes in the test file.
+func bytes_contains(b []byte, s string) bool {
+	return strings.Contains(string(b), s)
 }
 
 // BenchmarkHandlerProcess measures end-to-end handler latency for a POST /v1/process request.
