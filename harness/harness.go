@@ -37,11 +37,13 @@ type Harness interface {
 
 // sessionEntry tracks a single session lifecycle.
 type sessionEntry struct {
-	SessionID  string
-	Status     string
-	StartedAt  time.Time
-	LastActive time.Time
-	TurnCount  int
+	SessionID           string
+	Status              string
+	StartedAt           time.Time
+	LastActive          time.Time
+	TurnCount           int
+	CurrentDecisionID   string
+	CurrentDecisionType protocol.DecisionType
 }
 
 // sessionStore is a thread-safe in-memory session tracker.
@@ -187,6 +189,13 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GAP-009: record the finalized decision so GET /v1/sessions/{id} and
+	// POST /v1/cancel can report what was in flight.
+	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		e.CurrentDecisionID = decision.DecisionID
+		e.CurrentDecisionType = decision.Decision
+	})
+
 	writeJSON(w, http.StatusOK, decision)
 }
 
@@ -226,6 +235,13 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GAP-009: record the finalized decision so GET /v1/sessions/{id} and
+	// POST /v1/cancel can report what was in flight.
+	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		e.CurrentDecisionID = decision.DecisionID
+		e.CurrentDecisionType = decision.Decision
+	})
+
 	writeJSON(w, http.StatusOK, decision)
 }
 
@@ -249,11 +265,22 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GAP-009: report the decision that was in flight when cancel arrived.
+	// If no decision was ever finalized for the session this stays "" —
+	// nothing was in flight, which is the correct empty value.
+	cancelledDecisionID := ""
+	if entry := s.sessions.get(req.SessionID); entry != nil {
+		cancelledDecisionID = entry.CurrentDecisionID
+	}
+
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
 		e.Status = "cancelled"
 	})
 
-	writeJSON(w, http.StatusOK, protocol.CancelResponse{Cancelled: true, CancelledDecisionID: ""})
+	writeJSON(w, http.StatusOK, protocol.CancelResponse{
+		Cancelled:           true,
+		CancelledDecisionID: cancelledDecisionID,
+	})
 }
 
 // getSessionHandler handles GET /v1/sessions/{id}.
@@ -267,11 +294,13 @@ func (s *server) getSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := &protocol.SessionResponse{
-		SessionID:  entry.SessionID,
-		StartedAt:  entry.StartedAt.Format(time.RFC3339),
-		LastActive: entry.LastActive.Format(time.RFC3339),
-		TurnCount:  entry.TurnCount,
-		Status:     protocol.SessionStatus(entry.Status),
+		SessionID:           entry.SessionID,
+		StartedAt:           entry.StartedAt.Format(time.RFC3339),
+		LastActive:          entry.LastActive.Format(time.RFC3339),
+		TurnCount:           entry.TurnCount,
+		Status:              protocol.SessionStatus(entry.Status),
+		CurrentDecision:     entry.CurrentDecisionID,
+		CurrentDecisionType: entry.CurrentDecisionType,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
