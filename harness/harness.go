@@ -199,6 +199,12 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.sessions.get(req.SessionID) == nil {
+		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
+			"session not found: "+req.SessionID)
+		return
+	}
+
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
 		e.LastActive = time.Now()
 		e.TurnCount++
@@ -229,6 +235,12 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
 			"failed to decode request body: "+err.Error())
+		return
+	}
+
+	if s.sessions.get(req.SessionID) == nil {
+		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
+			"session not found: "+req.SessionID)
 		return
 	}
 

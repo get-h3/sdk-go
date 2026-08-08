@@ -395,6 +395,24 @@ func TestCancelEndpoint(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 
+	// GAP-DOG-002: cancel must 404 on unknown sessions — create the session
+	// via POST /v1/process first so the cancel below targets a real session.
+	processBody := `{
+		"session_id": "sess-c1",
+		"message": {"role": "user", "content": "hello", "timestamp": "2026-07-14T00:00:00Z"},
+		"identity": {"platform": "test", "chat_id": "c1", "user_name": "t", "user_id": "u1"},
+		"context": {
+			"history": [], "tools": [], "models": [],
+			"config": {"max_iterations": 10, "timeout_seconds": 30},
+			"session_state": {"turn_count": 0, "total_tool_calls": 0, "total_llm_calls": 0, "cost_so_far": 0, "started_at": "2026-07-14T00:00:00Z"}
+		}
+	}`
+	if resp, err := http.Post(ts.URL+"/v1/process", "application/json", strings.NewReader(processBody)); err != nil {
+		t.Fatalf("POST /v1/process (setup): %v", err)
+	} else {
+		_ = resp.Body.Close()
+	}
+
 	body := `{"session_id": "sess-c1", "reason": "user_interrupt"}`
 
 	resp, err := http.Post(ts.URL+"/v1/cancel", "application/json", strings.NewReader(body))
@@ -429,6 +447,68 @@ func TestCancelEndpoint(t *testing.T) {
 	}
 	if !cr.Cancelled {
 		t.Errorf("expected cancelled=true, got %v", cr.Cancelled)
+	}
+}
+
+func TestCancelUnknownSession(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	body := `{"session_id": "never-created", "reason": "user_interrupt"}`
+	resp, err := http.Post(ts.URL+"/v1/cancel", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/cancel: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+	if m.cancelCalled {
+		t.Error("OnCancel must NOT be called for an unknown session")
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrSessionNotFound {
+		t.Errorf("expected ErrSessionNotFound, got %q", errResp.Error.Code)
+	}
+}
+
+func TestResultUnknownSession(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	body := `{
+		"session_id": "never-created",
+		"decision_id": "dec-x",
+		"result": {"type": "tool_result", "tool_name": "test", "success": true}
+	}`
+	resp, err := http.Post(ts.URL+"/v1/result", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/result: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+	if m.lastResultReq != nil {
+		t.Error("OnResult must NOT be called for an unknown session")
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrSessionNotFound {
+		t.Errorf("expected ErrSessionNotFound, got %q", errResp.Error.Code)
 	}
 }
 
