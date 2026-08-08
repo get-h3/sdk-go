@@ -226,7 +226,7 @@ Errors follow one JSON shape everywhere:
 | Your decision fails validation (missing payload, empty content) | 500 | `INVALID_DECISION` |
 | Unknown session on GET/DELETE | 404 | `SESSION_NOT_FOUND` |
 | Panic inside your method | 500 | recovered — server stays up |
-| Handler exceeds the 30s timeout | 503 | plain-text `request timeout` |
+| Handler exceeds the 30s timeout | 504 | JSON `{"error":{"code":"HARNESS_TIMEOUT","message":"harness did not respond within the timeout"}}` |
 
 Best practices:
 
@@ -242,7 +242,7 @@ Best practices:
 |---|---|---|
 | `connection refused` | Server not running, or wrong port | Confirm `go run main.go` output; match `--endpoint` to the `ListenAndServe` port |
 | `address already in use` | Port 9191 taken | Use another port in both `main.go` and `h3-test --endpoint http://localhost:9192` |
-| Battery hangs on one test | Harness method blocked >30s | Server replies `503 request timeout`; make the method return promptly or move work to a goroutine |
+| Battery hangs on one test | Harness method blocked >30s | Server replies `504 JSON HARNESS_TIMEOUT` (`{"error":{"code":"HARNESS_TIMEOUT",...}}`); make the method return promptly or move work to a goroutine |
 | `400 INVALID_REQUEST` | Battery sends minimal requests | Don't require optional fields; only `session_id`, `message.role`, `identity.platform`, `identity.chat_id` are guaranteed |
 | `500 INVALID_DECISION` | Decision missing its payload | Every `text` decision needs `Text`; every `end` needs `End`; `text.content` must be non-empty |
 | History tests fail | History shrank | Echo `req.Context.History` back verbatim in every decision |

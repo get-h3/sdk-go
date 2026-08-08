@@ -80,10 +80,10 @@ go test ./... -count=1                     # repo suite, ~0.5s
 - **Cancel/result don't validate sessions**: `POST /v1/cancel` and
   `POST /v1/result` return 200 for unknown session ids (GAP-DOG-002) while
   GET/DELETE 404. Guard against ghost sessions in your client.
-- **Timeout docs are stale**: the server returns `504` + JSON
-  `HARNESS_TIMEOUT`, but integration-guide.md L229/L245 and api-reference.md
-  L214/L499 still describe `503 text/plain "request timeout"` (GAP-DOG-001).
-  Parse for the JSON shape.
+- **Timeout response shape**: the server returns `504` + JSON
+  `{"error":{"code":"HARNESS_TIMEOUT","message":"harness did not respond within the timeout"}}`
+  (GAP-008 implementation; docs aligned in GAP-DOG-001). Parse for the JSON
+  shape, not text/plain.
 - **Sessions are in-memory**: restart forgets everything (documented; plan
   your own persistence if needed).
 - **`DELETE /v1/sessions/{id}`** marks the session `cancelled` but keeps it

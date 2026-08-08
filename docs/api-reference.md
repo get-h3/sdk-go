@@ -211,7 +211,7 @@ Unknown session → `404 SESSION_NOT_FOUND` (same body as above). If
 |---|---|
 | Request logging | `slog.Info("request completed", method, path, status, duration)` for every request; `slog.Error("harness: panic recovered", error, stack)` on panics |
 | Panic recovery | Catches panics from harness methods, returns `500` plain-text `internal server error`; the process keeps serving |
-| Timeout | `http.TimeoutHandler` — **fixed 30 seconds**, hardcoded in `withMiddleware`. On expiry the client receives `503` with plain-text body `request timeout` |
+| Timeout | Custom timeout writer — **fixed 30 seconds**, wired in `withMiddleware`. On expiry the client receives `504` with a JSON `ErrorResponse` body `{"error":{"code":"HARNESS_TIMEOUT","message":"harness did not respond within the timeout"}}` (supersedes the legacy `http.TimeoutHandler` text/plain path) |
 
 There are currently **no configuration knobs** for the middleware: the 30s timeout
 is a constant of the server. Harness methods that may run longer than 30s must do
@@ -496,7 +496,8 @@ type ErrorResponse struct {
 | `INVALID_DECISION` | `500` after `OnProcess`/`OnResult` | Decision failed `Validate()` — missing payload for its type |
 | `INTERNAL_ERROR` | `500` | Your method returned a non-nil error |
 | `SESSION_NOT_FOUND` | `404` on `GET`/`DELETE /v1/sessions/{id}` | No session with that id in the store |
-| `UNKNOWN_TOOL` / `UNKNOWN_MODEL` / `SESSION_EXPIRED` / `HARNESS_TIMEOUT` | — (defined for protocol completeness) | Return these from your own `ErrorResponse` if you build a custom server; the SDK server does not emit them |
+| `UNKNOWN_TOOL` / `UNKNOWN_MODEL` / `SESSION_EXPIRED` | — (defined for protocol completeness) | Return these from your own `ErrorResponse` if you build a custom server; the SDK server does not emit them |
+| `HARNESS_TIMEOUT` | `504` (middleware timeout) | Harness method exceeded the 30s server timeout; emitted by the SDK server |
 
 > Note: the SDK server maps *every* method error to `INTERNAL_ERROR`. If you need
 > fine-grained codes on the wire, extend `NewHTTPServer`'s handler or implement
