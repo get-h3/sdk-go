@@ -22,13 +22,13 @@ import (
     "github.com/get-h3/sdk-go/protocol"
 )
 
-// MyHarness implements all 5 methods of harness.Harness.
-type MyHarness struct {
+// EchoHarness implements all 5 methods of harness.Harness.
+type EchoHarness struct {
     responseCount int
     streaming     bool // true while streaming unfinished text
 }
 
-func (h *MyHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
     // Messages containing "do not finish" request unfinished (streaming) text.
     h.streaming = strings.Contains(req.Message.Content, "do not finish")
 
@@ -45,12 +45,12 @@ func (h *MyHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision,
     }, nil
 }
 
-func (h *MyHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
     h.responseCount++
     if !h.streaming && h.responseCount >= 2 {
         return &protocol.Decision{
             Decision: protocol.DecisionEnd,
-            End:      &protocol.End{Reason: protocol.EndTaskComplete, Summary: "Done"},
+            End:      &protocol.End{Reason: protocol.EndTaskComplete, Summary: "Echo conversation complete"},
         }, nil
     }
     return &protocol.Decision{
@@ -59,15 +59,15 @@ func (h *MyHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, e
     }, nil
 }
 
-func (h *MyHarness) OnCancel(req *protocol.CancelRequest) error {
+func (h *EchoHarness) OnCancel(req *protocol.CancelRequest) error {
     return nil
 }
 
-func (h *MyHarness) OnSessionTerminate(sessionID string) error {
+func (h *EchoHarness) OnSessionTerminate(sessionID string) error {
     return nil
 }
 
-func (h *MyHarness) Health() *protocol.HealthResponse {
+func (h *EchoHarness) Health() *protocol.HealthResponse {
     return &protocol.HealthResponse{
         Status:          protocol.HealthOK,
         Version:         "1.0.0",
@@ -78,7 +78,7 @@ func (h *MyHarness) Health() *protocol.HealthResponse {
 }
 
 func main() {
-    h := harness.NewHTTPServer(&MyHarness{})
+    h := harness.NewHTTPServer(&EchoHarness{})
     http.ListenAndServe(":9191", h)
 }
 ```

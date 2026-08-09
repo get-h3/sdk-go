@@ -5,7 +5,7 @@ reach for.
 
 ## Comparison
 
-| Example | Source | What it shows | 43/43 compliant? | When to use |
+| Example | Source | What it shows | 44/44 compliant? | When to use |
 |---|---|---|---|---|
 | `minimal` | [`examples/minimal/main.go`](../examples/minimal/main.go) | Smallest possible harness — fixed greeting text, ends on any result | ✔ (text-only loop) | Absolute starting point; skeleton for your own harness |
 | `echo` | [`examples/echo/main.go`](../examples/echo/main.go) | Echo loop with streaming awareness (`do not finish`), history echo, result tracking | ✔ **Compliance reference** — same code as the README quickstart | Learning the loop contract; baseline for battery runs |

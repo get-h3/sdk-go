@@ -26,13 +26,13 @@ constraint that makes `go get` offline-friendly):
   `HARNESS_TIMEOUT` 504 — the 30s deadline is a hardcoded constant, not
   configurable.
 - **`testbed/`** — `MockHermes` (SendMessage/SendResult/SendCancel/
-  TerminateSession), `ConformanceHarness` (the 43/43 reference harness),
+  TerminateSession), `ConformanceHarness` (the 44/44 reference harness),
   `DefaultContext()/DefaultTools()/DefaultModels()` for fast unit tests.
 - **`cmd/` + `examples/`** — `gen-types` generator; minimal/echo/conformance/
   consensus examples; `h3-consensus-adapter` (external-agent bridge, refactored
   onto SDK types in GAP-007).
 
-Compliance is gated by **`h3-test`** (43 tests, 6 categories) from
+Compliance is gated by **`h3-test`** (44 tests, 6 categories) from
 `get-h3/shim` — a black-box HTTP battery run against any running harness.
 
 ## 2. Error history (what was found and fixed — and what it teaches)

@@ -50,15 +50,15 @@ Transport: REST
   Process Basic Flows                 8/8  ✅ PASSED
   Decision Types                      6/6  ✅ PASSED
   Result Handling                     7/7  ✅ PASSED
-  Error & Edge Cases                  10/10  ✅ PASSED
+  Error & Edge Cases                  11/11  ✅ PASSED
   Stress & Performance                5/5  ✅ PASSED
-  TOTAL                               43/43  PASSED
+  TOTAL                               44/44  PASSED
   Duration                            0.24s
   Latency p50/p95                     0.77ms / 33.53ms
 EXIT_CODE:0
 ```
 
-**43/43 on the first run**, 0.24s. The battery is genuinely black-box (HTTP
+**44/44 on the first run**, 0.24s. The battery is genuinely black-box (HTTP
 only) and fast enough to run on every commit.
 
 ### 3.2 Full agent loop (curl, as Hermes would drive it)
@@ -125,7 +125,7 @@ generated when omitted (verified). Streaming works (`finished:false` until the
 
 ## 5. What a new user should know (short version)
 
-- The happy path is **fast and clean**: docs → 43/43 in ~15 minutes, zero
+- The happy path is **fast and clean**: docs → 44/44 in ~15 minutes, zero
   dependency issues, first-build success.
 - Use `protocol.NewDecision(type)` so every decision carries a UUID.
 - Echo `req.Context.History` back verbatim or the battery's history tests fail.
