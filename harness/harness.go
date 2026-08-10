@@ -89,9 +89,7 @@ func (s *sessionStore) update(sessionID string, fn func(*sessionEntry)) {
 func (s *sessionStore) delete(sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if entry, ok := s.sessions[sessionID]; ok {
-		entry.Status = "cancelled"
-	}
+	delete(s.sessions, sessionID)
 }
 
 // server holds the harness and session store for HTTP handlers.

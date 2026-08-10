@@ -624,6 +624,18 @@ func TestDeleteSessionEndpoint(t *testing.T) {
 	if tr.SessionID != "sess-d1" {
 		t.Errorf("expected session_id sess-d1, got %q", tr.SessionID)
 	}
+
+	// GAP-014: after DELETE, the session entry must be removed from the store
+	// so GET /v1/sessions/{id} returns 404 (not 200 with a stale entry).
+	getResp, err := http.Get(ts.URL + "/v1/sessions/sess-d1")
+	if err != nil {
+		t.Fatalf("GET /v1/sessions/sess-d1 after delete: %v", err)
+	}
+	defer func() { _ = getResp.Body.Close() }()
+
+	if getResp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 after delete, got %d", getResp.StatusCode)
+	}
 }
 
 func TestDeleteSessionNotFound(t *testing.T) {
