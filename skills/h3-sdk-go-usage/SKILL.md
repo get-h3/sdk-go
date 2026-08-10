@@ -6,7 +6,7 @@ description: >-
   unit-test with testbed, and avoid the known contract/observability traps.
   Load this skill when working in this repo or building any harness with
   github.com/get-h3/sdk-go.
-version: 1.0.0
+version: 1.0.1
 category: software-development
 ---
 
@@ -23,8 +23,8 @@ side. A harness = 5 methods + an HTTP server + a passing `h3-test` battery.
 | Wire types | `protocol/` | `Decision` (6 types), `ProcessRequest`, `ResultRequest`, `ErrorResponse`, `SessionResponse` |
 | Server + interface | `harness/` | `Harness` interface (5 methods), `NewHTTPServer(h) http.Handler` |
 | Test helpers | `testbed/` | `MockHermes`, `ConformanceHarness`, `DefaultContext()` |
-| Docs (read these first) | `docs/integration-guide.md`, `docs/api-reference.md`, `docs/examples.md` | zero-to-43/43 path, contracts, example tour |
-| Compliance gate | `h3-test --endpoint http://localhost:9191` (from get-h3/shim) | 43 tests / 6 categories, ~0.25s |
+| Docs (read these first) | `docs/integration-guide.md`, `docs/api-reference.md`, `docs/examples.md` | zero-to-44/44 path, contracts, example tour |
+| Compliance gate | `h3-test --endpoint http://localhost:9191` (from get-h3/shim) | 44 tests / 6 categories, ~0.25s |
 
 ## Run commands
 
@@ -66,37 +66,39 @@ go test ./... -count=1                     # repo suite, ~0.5s
 7. **Health**: return `HealthOK`, version, transport `rest`,
    protocol_version `1.0`, and your real `Capabilities` list.
 
-## Known traps (verified 2026-08-08 — do not get bitten)
+## Known traps (verified 2026-08-10 — do not get bitten)
 
 - **Battery green ≠ contract clean.** The battery checks status codes and key
   presence, not value semantics. Probe error paths yourself with curl.
-- **Session status lies**: `GET /v1/sessions/{id}` stays `"active"` forever —
-  never `"completed"`, even after an `end` decision (GAP-DOG-003). Don't trust
-  it for lifecycle decisions; key your own store by `req.SessionID`.
-- **No current-decision observability**: `current_decision`/
-  `current_decision_type` are never populated; `cancelled_decision_id` is
-  always `""` (GAP-009). A streaming decision you cancel looks identical to
-  cancelling nothing.
-- **Cancel/result don't validate sessions**: `POST /v1/cancel` and
-  `POST /v1/result` return 200 for unknown session ids (GAP-DOG-002) while
-  GET/DELETE 404. Guard against ghost sessions in your client.
+- **Session lifecycle is now observable — read it, don't work around it.**
+  `GET /v1/sessions/{id}` reports the real status: `active` while running,
+  `completed` after an `end` decision (GAP-DOG-003), `cancelled` after
+  `POST /v1/cancel` (GAP-009 fills `current_decision`/`current_decision_type`,
+  and cancel returns the in-flight `cancelled_decision_id`). Older traps
+  (status always `active`, empty current-decision fields) are fixed — do not
+  write workarounds for them.
+- **Unknown sessions 404 everywhere**: `POST /v1/cancel`, `POST /v1/result`,
+  `GET/DELETE /v1/sessions/{id}` all return `404 SESSION_NOT_FOUND` for
+  unknown session ids (GAP-DOG-002). Guard against ghost sessions in your
+  client.
 - **Timeout response shape**: the server returns `504` + JSON
   `{"error":{"code":"HARNESS_TIMEOUT","message":"harness did not respond within the timeout"}}`
-  (GAP-008 implementation; docs aligned in GAP-DOG-001). Parse for the JSON
-  shape, not text/plain.
-- **Sessions are in-memory**: restart forgets everything (documented; plan
-  your own persistence if needed).
-- **`DELETE /v1/sessions/{id}`** marks the session `cancelled` but keeps it
-  retrievable (200 on later GET) — expected per docs, but surprising.
+  (GAP-008 implementation). Parse for the JSON shape, not text/plain.
+- **Sessions are in-memory and DELETE removes them**: restart forgets
+  everything (documented; plan your own persistence if needed). `DELETE
+  /v1/sessions/{id}` calls `OnSessionTerminate` then removes the session —
+  a later `GET` returns 404 (GAP-014). `POST /v1/cancel` is the soft path:
+  it keeps the session retrievable with status `cancelled`.
 - Strays in the repo (`.vfs/.dirty`, `dagger.db`, `gen-types`, `echo`,
   `minimal`, `h3-consensus-adapter` binaries) are intentional leftovers —
   leave them untracked.
 
 ## Verifying your harness end-to-end (L3 checklist)
 
-1. `h3-test` → 43/43.
+1. `h3-test` → 44/44.
 2. curl full loop: process (tool_call) → result (tool_result) → result
    (text_sent) → end; confirm history grows, never shrinks.
 3. curl error paths: malformed JSON (400), missing session_id (400), unknown
-   session GET/DELETE (404), hang >30s (504 JSON HARNESS_TIMEOUT).
+   session GET/DELETE/cancel/result (404), hang >30s (504 JSON
+   HARNESS_TIMEOUT), DELETE then GET (404).
 4. `go vet ./...`, `go test ./...` clean.
