@@ -193,7 +193,9 @@ Unknown session → `404`:
 
 ### `DELETE /v1/sessions/{id}`
 
-Runs `OnSessionTerminate(sessionID)`, then marks the session cancelled.
+Runs `OnSessionTerminate(sessionID)`, then deletes the session from the
+in-memory store. The session is removed, not merely marked cancelled;
+a subsequent `GET /v1/sessions/{id}` for that session returns `404 SESSION_NOT_FOUND`.
 
 Response `200` — **corrected contract (GAP-003)**:
 
