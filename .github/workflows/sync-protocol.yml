@@ -35,8 +35,8 @@ jobs:
 
       - name: Copy schemas into SDK
         run: |
-          rm -rf sdk-go/schemas/v1
-          cp -r protocol/schemas/v1 sdk-go/schemas/v1
+          rm -rf sdk-go/protocol/schemas/v1
+          cp -r protocol/schemas/v1 sdk-go/protocol/schemas/v1
           echo "Schemas synced from protocol repo (${{ github.event.client_payload.ref || 'main' }})"
 
       - name: Regenerate types from schemas
