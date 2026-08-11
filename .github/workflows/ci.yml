@@ -91,3 +91,66 @@ jobs:
         run: gitreins guard
         env:
           GITREINS_LLM_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+  # GAP-019: GOVERNANCE.md:52-53 mandates h3-test as the release gate and
+  # README:144 says "Must pass h3-test", but CI never ran it — a wire-contract
+  # break merged green and was only caught at release time. This job serves the
+  # canonical conformance harness and runs the real battery against it — h3-test
+  # exits non-zero on any failure, so CI now gates compliance. Runs as its own
+  # job (not part of the matrix) so the battery executes exactly once.
+  battery:
+    name: h3-test compliance battery
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Checkout shim repo (h3-test battery CLI)
+        uses: actions/checkout@v4
+        with:
+          repository: get-h3/shim
+          path: shim
+
+      - name: Install h3-test battery CLI (path-install from checkout — shim unpublished on PyPI, P3-10 blocked)
+        run: pip install ./shim
+
+      - name: Start conformance harness (battery port 9191)
+        run: |
+          go build -o conformance-server ./examples/conformance
+          ./conformance-server > battery-server.log 2>&1 &
+          echo $! > battery-server.pid
+
+      - name: Wait for harness health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:9191/v1/health; then
+              echo "Harness healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Harness never became healthy; server log:"
+          cat battery-server.log || true
+          exit 1
+
+      - name: Run h3-test battery (44/44 gate)
+        run: |
+          set -o pipefail
+          h3-test --endpoint http://localhost:9191 | tee battery.log
+          grep -q "44/44" battery.log
+
+      - name: Kill harness
+        if: always()
+        run: |
+          kill $(cat battery-server.pid) || true
