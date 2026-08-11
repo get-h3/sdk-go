@@ -159,12 +159,13 @@ Request:
 Response `200` — **corrected contract (GAP-003)**:
 
 ```json
-{"cancelled": true, "cancelled_decision_id": ""}
+{"cancelled": true, "cancelled_decision_id": "9f1c…"}
 ```
 
-`cancelled_decision_id` is currently always the empty string: the server does not
-track the in-flight decision id. Clients must treat a non-null `cancelled` as
-authoritative.
+`cancelled_decision_id` is the id of the decision that was in flight when the
+cancel arrived (tracked from the latest `OnProcess`/`OnResult` response). It is
+the empty string only when no decision was in flight at cancel time. Treat a
+non-null `cancelled` as authoritative.
 
 ### `GET /v1/sessions/{id}`
 

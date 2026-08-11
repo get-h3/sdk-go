@@ -208,7 +208,7 @@ don't manage it.
 |---|---|
 | `POST /v1/process` | Session created (`status: active`), turn counter incremented. |
 | `POST /v1/result` | `last_active` refreshed, turn counter incremented. |
-| `POST /v1/cancel` | Your `OnCancel` runs, session marked `cancelled`, responds `{"cancelled": true, "cancelled_decision_id": ""}`. |
+| `POST /v1/cancel` | Your `OnCancel` runs, session marked `cancelled`, responds `{"cancelled": true, "cancelled_decision_id": "<decision_id if in flight, else empty>"}`. |
 | `GET /v1/sessions/{id}` | Returns status/started/last_active/turn_count; `404 SESSION_NOT_FOUND` for unknown sessions. |
 | `DELETE /v1/sessions/{id}` | Your `OnSessionTerminate` runs, session marked `cancelled`, responds `{"terminated": true, "session_id": "<id>"}`; `404 SESSION_NOT_FOUND` for unknown sessions. |
 
