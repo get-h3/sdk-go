@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/get-h3/sdk-go/harness"
 	"github.com/get-h3/sdk-go/protocol"
@@ -15,6 +16,7 @@ import (
 
 // EchoHarness echoes the user message back and tracks results.
 type EchoHarness struct {
+	mu            sync.Mutex
 	responseCount int
 	streaming     bool // true when the current session is streaming text
 }
@@ -24,8 +26,10 @@ func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decisio
 	content := fmt.Sprintf("Echo: %s", req.Message.Content)
 
 	// Track streaming mode: messages containing "do not finish" trigger unfinished text
+	h.mu.Lock()
 	h.streaming = strings.Contains(req.Message.Content, "do not finish")
 	finished := !h.streaming
+	h.mu.Unlock()
 
 	// Echo conversation history from context
 	history := make([]protocol.HistoryEntry, len(req.Context.History))
@@ -43,9 +47,13 @@ func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decisio
 
 // OnResult reports the received decision ID, then ends the session.
 func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+	h.mu.Lock()
 	h.responseCount++
+	count := h.responseCount
+	streaming := h.streaming
+	h.mu.Unlock()
 	// End after 2 results for normal mode, stay in stream for streaming
-	if !h.streaming && h.responseCount >= 2 {
+	if !streaming && count >= 2 {
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,
 			DecisionID: "echo-end",
@@ -53,7 +61,7 @@ func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision,
 		}, nil
 	}
 	content := fmt.Sprintf("Result received: %s", req.DecisionID)
-	finished := !h.streaming
+	finished := !streaming
 	return &protocol.Decision{
 		Decision:   protocol.DecisionText,
 		DecisionID: "echo-002",
