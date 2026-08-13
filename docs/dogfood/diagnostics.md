@@ -40,7 +40,7 @@ Compliance is gated by **`h3-test`** (44 tests, 6 categories) from
 | When | Finding | Lesson |
 |---|---|---|
 | 2026-08-04 sweep | GAP-001: AGENTS.md quickstart didn't compile (missing 4 of 5 methods) | Docs rot independently of code; the quickstart is a test artifact, compile it in CI |
-| 2026-08-04 sweep | GAP-002: README echo example failed 3/43 battery tests | A "minimal" example can quietly be non-compliant; the conformance example is the reference |
+| 2026-08-04 sweep | GAP-002: README echo example failed 3/44 battery tests | A "minimal" example can quietly be non-compliant; the conformance example is the reference |
 | 2026-08-04 sweep | GAP-003: cancel/delete response bodies didn't match OpenAPI | The battery checks status codes, not body shapes — curl the contract directly |
 | 2026-08-04 sweep | GAP-004: no docs at all | → integration-guide + api-reference + examples.md |
 | 2026-08-07 sweep | GAP-005: `go generate ./protocol/` broken (schemas missing) | Generated-code repos must ship their inputs |
