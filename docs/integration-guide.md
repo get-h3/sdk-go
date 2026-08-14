@@ -67,6 +67,7 @@ import (
     "log"
     "net/http"
     "strings"
+    "sync"
 
     "github.com/get-h3/sdk-go/harness"
     "github.com/get-h3/sdk-go/protocol"
@@ -75,6 +76,7 @@ import (
 // EchoHarness implements all 5 methods of harness.Harness and is H3-compliant
 // (passes the full h3-test battery, 44/44).
 type EchoHarness struct {
+    mu            sync.Mutex
     responseCount int
     streaming     bool // true while streaming unfinished text
 }
@@ -83,7 +85,10 @@ type EchoHarness struct {
 // Decision in the agent loop.
 func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
     // Messages containing "do not finish" request unfinished (streaming) text.
+    h.mu.Lock()
     h.streaming = strings.Contains(req.Message.Content, "do not finish")
+    finished := !h.streaming
+    h.mu.Unlock()
 
     // Echo conversation history back so it never shrinks.
     history := make([]protocol.HistoryEntry, len(req.Context.History))
@@ -93,7 +98,7 @@ func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decisio
 
     return &protocol.Decision{
         Decision: protocol.DecisionText,
-        Text:     &protocol.TextResp{Content: fmt.Sprintf("Echo: %s", req.Message.Content), Finished: !h.streaming},
+        Text:     &protocol.TextResp{Content: fmt.Sprintf("Echo: %s", req.Message.Content), Finished: finished},
         History:  history,
     }, nil
 }
@@ -101,9 +106,13 @@ func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decisio
 // OnResult is called after Hermes executes a Decision. Returns the next
 // Decision. Return DecisionEnd to finish.
 func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+    h.mu.Lock()
     h.responseCount++
+    count := h.responseCount
+    streaming := h.streaming
+    h.mu.Unlock()
     // End after 2 results in normal mode, stay in the stream while streaming.
-    if !h.streaming && h.responseCount >= 2 {
+    if !streaming && count >= 2 {
         return &protocol.Decision{
             Decision: protocol.DecisionEnd,
             End:      &protocol.End{Reason: protocol.EndTaskComplete, Summary: "Echo conversation complete"},
@@ -111,7 +120,7 @@ func (h *EchoHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision,
     }
     return &protocol.Decision{
         Decision: protocol.DecisionText,
-        Text:     &protocol.TextResp{Content: fmt.Sprintf("Result received: %s", req.DecisionID), Finished: !h.streaming},
+        Text:     &protocol.TextResp{Content: fmt.Sprintf("Result received: %s", req.DecisionID), Finished: !streaming},
     }, nil
 }
 
