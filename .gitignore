@@ -36,3 +36,9 @@ Thumbs.db
 
 .coding-hermes/board/*.parquet
 .coding-hermes/board/*.duckdb
+
+# Local tool artifacts (debug output, rebuildable caches)
+dagger.db*
+.vfs/.dirty
+gen-types
+.gitreins/history/
