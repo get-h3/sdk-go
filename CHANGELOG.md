@@ -2,6 +2,25 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.2] — 2026-08-15
+
+### Fixed
+- `DELETE /v1/sessions/{id}` now removes the session entry from the store (real map deletion); a subsequent `GET /v1/sessions/{id}` returns `404` instead of a stale record, stopping unbounded session retention. (GAP-014)
+- Echo example harness guards shared state (`responseCount`, `streaming`) with a `sync.Mutex`, making it race-free under concurrent sessions. (GAP-021)
+- README quickstart and integration-guide snippets guard shared harness state with `sync.Mutex`, matching the race-safe pattern now in the echo example. (GAP-023)
+
+### Added
+- CI: h3-test compliance battery job runs all 44 tests against the conformance example on `:9191` as a release gate. (GAP-019)
+- CI: sync-protocol workflow copies schemas to `protocol/schemas/v1` (the `go:generate` path) instead of `sdk-go/schemas`. (GAP-018)
+- `.gitignore` for local tool artifacts. (GAP-024)
+
+### Docs
+- `DELETE /v1/sessions/{id}` documented as session removal: subsequent `GET` returns `404`. (GAP-017)
+- `cancelled_decision_id` documented as populated when a decision is in-flight at cancel time. (GAP-016)
+- `skills/h3-sdk-go-usage` refreshed: battery count corrected to 44/44; traps section matches the fixed session lifecycle (GAP-009/DOG-002/DOG-003/014). (GAP-015)
+- Dogfood battery count corrected from 43 to 44 across docs. (GAP-022)
+- Compliance count aligned 43/43→44/44 (live h3-test verified), quickstart naming aligned to `EchoHarness`, stale `CRON_PAUSE_REQUESTED` removed. (GAP-011, GAP-012, GAP-013)
+
 ## [0.1.1] — 2026-08-09
 
 ### Fixed
