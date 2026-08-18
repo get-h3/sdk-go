@@ -6,7 +6,7 @@ description: >-
   unit-test with testbed, and avoid the known contract/observability traps.
   Load this skill when working in this repo or building any harness with
   github.com/get-h3/sdk-go.
-version: 1.0.1
+version: 1.0.2
 category: software-development
 ---
 
@@ -89,6 +89,20 @@ go test ./... -count=1                     # repo suite, ~0.5s
   /v1/sessions/{id}` calls `OnSessionTerminate` then removes the session —
   a later `GET` returns 404 (GAP-014). `POST /v1/cancel` is the soft path:
   it keeps the session retrievable with status `cancelled`.
+- **A panicking harness gets a text/plain 500** (`internal server error`),
+  not the JSON `ErrorResponse` the protocol requires — verified live
+  2026-08-18 (GAP-027, P1, open at time of writing). If your client parses
+  every error as JSON, handle the non-JSON body or fix the recover path.
+  The battery cannot detect this; probe it yourself with a panic trigger.
+- **Cancel is not terminal in the status machine**: a late `result` after
+  `cancel` flips the session status from `cancelled` back to `completed`
+  and bumps `turn_count` (verified live 2026-08-18, GAP-028, P2). Don't
+  trust `completed` after a cancel — treat `cancelled` as the authoritative
+  terminal state in your reconciler.
+- **MockHermes does not recover panics**: a panicking harness crashes
+  `go test` with a raw goroutine dump (verified 2026-08-18, GAP-029, P3).
+  Wrap panicky calls in `recover()` in your own tests until the testbed
+  grows a guardrail.
 - Strays in the repo (`.vfs/.dirty`, `dagger.db`, `gen-types`, `echo`,
   `minimal`, `h3-consensus-adapter` binaries) are intentional leftovers —
   leave them untracked.

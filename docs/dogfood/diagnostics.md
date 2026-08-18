@@ -91,3 +91,39 @@ battery missed. The battery is necessary but not sufficient — real use
   decision tracking, empty `cancelled_decision_id` (GAP-009 + GAP-DOG-003).
 - `POST /v1/cancel` and `/v1/result` accept unknown sessions (GAP-DOG-002).
 - Docs lag the timeout implementation (GAP-DOG-001).
+
+## 5. Dogfood run 2026-08-18 (published-consumer path, v0.1.2)
+
+**How this run differed from 08-08:** the earlier run scaffolded with a local
+`replace` directive because the published module lagged HEAD (GAP-010, GAP-025).
+v0.1.2 was tagged 2026-08-15, so this run was a plain `go get
+github.com/get-h3/sdk-go@latest` — the honest consumer experience.
+
+**What was built:** `h3-reminders`, a reminders-assistant harness in a scratch
+module, deliberately exercising all six decision types, streaming, history
+passthrough, panic recovery, lifecycle, and concurrency. Full source + probe
+table: `docs/dogfood/2026-08-18-integration.md`.
+
+**Everything held up.** `go get` → v0.1.2; build/vet/tests clean; all 6
+endpoints behave per OpenAPI; all 6 decision types serialize correctly;
+`h3-test` 44/44 in 0.16s; `go run -race` + 6 concurrent sessions → 0 races;
+`go test -short` 0.35s. The fixes from GAP-003 through GAP-026 are real and
+observable (404s, completed status, cancelled_decision_id, DELETE-as-removal,
+504 JSON timeout).
+
+**What was still wrong (new findings, board GAP-027..GAP-030):**
+
+| Finding | Live evidence | Lesson |
+|---|---|---|
+| GAP-027 (P1): panic recovery returns `500 text/plain "internal server error"` (middleware `recover()` → `http.Error`), not the JSON `ErrorResponse` the protocol mandates; `api-reference.md:478` claims "every error response, all endpoints" is JSON while L216/L245 document the plain text | `curl POST /v1/process {"content":"panic now"}` → `HTTP/1.1 500`, `Content-Type: text/plain`, body `internal server error` | The battery can only drive compliant harnesses — it can never make a harness panic, so recovery-path contract breaks ship green. GAP-008 taught the same lesson for timeouts; the fix is the same: `writeError(500, INTERNAL_ERROR)`. **Defined-but-unused error codes (`ErrInternalError`) mark unimplemented contract paths.** |
+| GAP-028 (P2): cancel sets status `cancelled`, but a late `result` executes `OnResult` and the end-transition overwrites status to `completed` (+turn_count) | process → cancel → late result → GET session: `status "completed"`, `turn_count 2` | Cancel must be terminal in the status machine; late in-flight results may run the harness but must not rewrite lifecycle state. |
+| GAP-029 (P3): `testbed.MockHermes` has no `recover()` — a panicking harness crashes `go test` with a raw goroutine dump | had to wrap the call in `recover()` in my own test | The advertised "unit-test with MockHermes" workflow needs a guardrail; surface panics as errors. |
+| GAP-030 (P3): §3.8 above says "Today that means knowing: status stays active after end…" — all four listed behaviors are FIXED (verified live this run) | status `completed`, `current_decision` populated, 404s, 504 JSON | Dated historical sections are fine, but "Today" claims must track the fixes; same class as GAP-015 (skill refresh). |
+
+**The right way (updated 2026-08-18):** the published path works —
+`go get github.com/get-h3/sdk-go@latest` resolves v0.1.2 and is fully
+compliant. Use `protocol.NewDecision(type)` / `protocol.GenerateUUID()`, echo
+history on every decision, guard shared state with `sync.Mutex`, gate with
+`h3-test` (0.16s), then probe beyond the battery: panic (GAP-027), cancel-then-
+result (GAP-028), and unit-test panics with a manual recover (GAP-029) until
+the testbed grows one.
