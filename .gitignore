@@ -42,3 +42,4 @@ dagger.db*
 .vfs/.dirty
 gen-types
 .gitreins/history/
+.gitreins/usage.jsonl
