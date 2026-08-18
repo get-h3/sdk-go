@@ -2,6 +2,16 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.3] — 2026-08-18
+
+### Fixed
+- Panic recovery honors the error contract: a panicking harness now gets `500` with a JSON `ErrorResponse` (`code: INTERNAL_ERROR`) instead of `text/plain "internal server error"`. (GAP-027)
+- Cancelled sessions are terminal: a late `POST /v1/result` on a cancelled session no longer flips status back to `completed` or increments `turn_count`; the lifecycle state stays `cancelled`. (GAP-028)
+- `testbed.MockHermes` recovers harness panics in all four driving methods (`SendMessage`/`SendResult`/`SendCancel`/`TerminateSession`) and surfaces them as errors instead of crashing the test binary with a raw goroutine dump. (GAP-029)
+
+### Docs
+- `docs/dogfood/diagnostics.md` §3.8 no longer instructs workarounds for bugs fixed since 2026-08-08 (session status, `current_decision*`, session validation, timeout shape) — it documents the current behavior. (GAP-030)
+
 ## [0.1.2] — 2026-08-15
 
 ### Fixed
