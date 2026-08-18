@@ -3,6 +3,7 @@
 package testbed
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/get-h3/sdk-go/harness"
@@ -30,10 +31,18 @@ func NewMockHermes(h harness.Harness) *MockHermes {
 	}
 }
 
+// recoverErr converts a recovered panic into an error prefixed with "harness panic:".
+func (m *MockHermes) recoverErr(r any) error {
+	if r == nil {
+		return nil
+	}
+	return fmt.Errorf("harness panic: %v", r)
+}
+
 // SendMessage simulates Hermes sending a user message to the harness.
 // It constructs a ProcessRequest and calls h.OnProcess.
 // Returns the Decision from OnProcess.
-func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (*protocol.Decision, error) {
+func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (dec *protocol.Decision, err error) {
 	m.decisionCount++
 	m.SessionCount++
 
@@ -53,7 +62,15 @@ func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (*
 		Context: DefaultContext(),
 	}
 
-	dec, err := m.Harness.OnProcess(req)
+	defer func() {
+		if p := recover(); p != nil {
+			err = m.recoverErr(p)
+			m.LastError = err
+			dec = nil
+		}
+	}()
+
+	dec, err = m.Harness.OnProcess(req)
 	m.LastDecision = dec
 	m.LastError = err
 	if dec != nil {
@@ -65,14 +82,22 @@ func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (*
 // SendResult simulates Hermes sending a tool result back.
 // It constructs a ResultRequest and calls h.OnResult.
 // Returns the Decision from OnResult.
-func (m *MockHermes) SendResult(sessionID, decisionID string, result protocol.Result) (*protocol.Decision, error) {
+func (m *MockHermes) SendResult(sessionID, decisionID string, result protocol.Result) (dec *protocol.Decision, err error) {
 	req := &protocol.ResultRequest{
 		SessionID:  sessionID,
 		DecisionID: decisionID,
 		Result:     result,
 	}
 
-	dec, err := m.Harness.OnResult(req)
+	defer func() {
+		if p := recover(); p != nil {
+			err = m.recoverErr(p)
+			m.LastError = err
+			dec = nil
+		}
+	}()
+
+	dec, err = m.Harness.OnResult(req)
 	m.LastDecision = dec
 	m.LastError = err
 	if dec != nil {
@@ -82,13 +107,20 @@ func (m *MockHermes) SendResult(sessionID, decisionID string, result protocol.Re
 }
 
 // SendCancel simulates Hermes sending a cancel request.
-func (m *MockHermes) SendCancel(sessionID string, reason protocol.CancelReason) error {
+func (m *MockHermes) SendCancel(sessionID string, reason protocol.CancelReason) (err error) {
 	req := &protocol.CancelRequest{
 		SessionID: sessionID,
 		Reason:    reason,
 	}
 
-	err := m.Harness.OnCancel(req)
+	defer func() {
+		if p := recover(); p != nil {
+			err = m.recoverErr(p)
+			m.LastError = err
+		}
+	}()
+
+	err = m.Harness.OnCancel(req)
 	m.LastError = err
 	return err
 }
@@ -99,8 +131,15 @@ func (m *MockHermes) Health() *protocol.HealthResponse {
 }
 
 // TerminateSession calls OnSessionTerminate.
-func (m *MockHermes) TerminateSession(sessionID string) error {
-	err := m.Harness.OnSessionTerminate(sessionID)
+func (m *MockHermes) TerminateSession(sessionID string) (err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = m.recoverErr(p)
+			m.LastError = err
+		}
+	}()
+
+	err = m.Harness.OnSessionTerminate(sessionID)
 	m.LastError = err
 	return err
 }

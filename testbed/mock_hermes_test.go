@@ -301,5 +301,88 @@ func TestMockHermes_LastError(t *testing.T) {
 	}
 }
 
+// panicHarness panics in OnProcess to verify MockHermes recovers panics
+// instead of crashing the test binary.
+type panicHarness struct{}
+
+func (h *panicHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+	panic("boom in OnProcess")
+}
+
+func (h *panicHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+	panic("boom in OnResult")
+}
+
+func (h *panicHarness) OnCancel(req *protocol.CancelRequest) error {
+	panic("boom in OnCancel")
+}
+
+func (h *panicHarness) OnSessionTerminate(sessionID string) error {
+	panic("boom in OnSessionTerminate")
+}
+
+func (h *panicHarness) Health() *protocol.HealthResponse {
+	return &protocol.HealthResponse{
+		Status:          protocol.HealthOK,
+		Version:         "1.0.0",
+		Transport:       "rest",
+		ProtocolVersion: "1.0",
+	}
+}
+
+func TestSendMessagePanicRecovery(t *testing.T) {
+	mh := NewMockHermes(&panicHarness{})
+
+	dec, err := mh.SendMessage("sess-001", "trigger panic", "tester", "user-1")
+	if err == nil {
+		t.Fatal("expected error from panicking harness, got nil")
+	}
+	if dec != nil {
+		t.Errorf("expected nil decision on panic, got %+v", dec)
+	}
+	if mh.LastError == nil {
+		t.Error("LastError should be set after panic recovery")
+	}
+}
+
+func TestSendResultPanicRecovery(t *testing.T) {
+	mh := NewMockHermes(&panicHarness{})
+
+	dec, err := mh.SendResult("sess-001", "dec-001", protocol.Result{Type: protocol.ResultTool, Success: true})
+	if err == nil {
+		t.Fatal("expected error from panicking harness, got nil")
+	}
+	if dec != nil {
+		t.Errorf("expected nil decision on panic, got %+v", dec)
+	}
+	if mh.LastError == nil {
+		t.Error("LastError should be set after panic recovery")
+	}
+}
+
+func TestSendCancelPanicRecovery(t *testing.T) {
+	mh := NewMockHermes(&panicHarness{})
+
+	err := mh.SendCancel("sess-001", protocol.CancelUserInterrupt)
+	if err == nil {
+		t.Fatal("expected error from panicking harness, got nil")
+	}
+	if mh.LastError == nil {
+		t.Error("LastError should be set after panic recovery")
+	}
+}
+
+func TestTerminateSessionPanicRecovery(t *testing.T) {
+	mh := NewMockHermes(&panicHarness{})
+
+	err := mh.TerminateSession("sess-001")
+	if err == nil {
+		t.Fatal("expected error from panicking harness, got nil")
+	}
+	if mh.LastError == nil {
+		t.Error("LastError should be set after panic recovery")
+	}
+}
+
 // Verify MockHermes implements the harness.Harness interface via its wrapped harness.
 var _ harness.Harness = &echoHarness{}
