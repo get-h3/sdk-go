@@ -78,10 +78,14 @@ battery missed. The battery is necessary but not sufficient — real use
    constantly.
 8. **Then probe beyond the battery:** curl the error paths (unknown sessions,
    malformed bodies, hangs), and diff behavior against `h3-protocol.yaml`.
-   Today that means knowing: status stays `active` after `end`
-   (GAP-DOG-003), `current_decision*` is never populated (GAP-009),
-   cancel/result don't validate sessions (GAP-DOG-002), and the timeout docs
-   are stale (GAP-DOG-001).
+   Today that means verifying the fixes landed: session status transitions
+   `active` → `completed` on an end decision and stays `cancelled` after a
+   cancel, even when a late result arrives (GAP-DOG-003 fixed tick #114;
+   GAP-028 cancelled-is-terminal tick #178), `current_decision*` and
+   `cancelled_decision_id` are populated (GAP-009 fixed tick #112), cancel and
+   result return 404 `SESSION_NOT_FOUND` for unknown sessions (GAP-DOG-002
+   fixed tick #111), and the timeout path returns 504 JSON `HARNESS_TIMEOUT`
+   (GAP-008 fixed tick #110, docs corrected tick #113).
 
 ## 4. Known limits (as of 2026-08-08)
 
