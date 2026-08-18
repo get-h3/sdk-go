@@ -164,12 +164,16 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track session
-	s.sessions.create(req.SessionID)
-	s.sessions.update(req.SessionID, func(e *sessionEntry) {
-		e.LastActive = time.Now()
-		e.TurnCount++
-	})
+	// Track session — GAP-028: cancelled is terminal. A late POST /v1/process
+	// for an already-cancelled session must not overwrite the entry or
+	// increment turn_count. Harness callbacks still run (permissive).
+	if entry := s.sessions.get(req.SessionID); entry == nil || entry.Status != "cancelled" {
+		s.sessions.create(req.SessionID)
+		s.sessions.update(req.SessionID, func(e *sessionEntry) {
+			e.LastActive = time.Now()
+			e.TurnCount++
+		})
+	}
 
 	decision, err := s.harness.OnProcess(&req)
 	if err != nil {
@@ -191,7 +195,12 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 	// POST /v1/cancel can report what was in flight.
 	// GAP-DOG-003: transition session status to completed when the harness
 	// returns DecisionEnd from OnProcess.
+	// GAP-028: cancelled is terminal — do not rewrite lifecycle state for
+	// already-cancelled sessions.
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		if e.Status == "cancelled" {
+			return
+		}
 		e.CurrentDecisionID = decision.DecisionID
 		e.CurrentDecisionType = decision.Decision
 		if decision.Decision == protocol.DecisionEnd {
@@ -217,7 +226,13 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GAP-028: cancelled is terminal — a late POST /v1/result for an
+	// already-cancelled session must not increment turn_count or rewrite
+	// status. Harness callbacks still run (permissive).
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		if e.Status == "cancelled" {
+			return
+		}
 		e.LastActive = time.Now()
 		e.TurnCount++
 	})
@@ -242,7 +257,12 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 	// POST /v1/cancel can report what was in flight.
 	// GAP-DOG-003: transition session status to completed when the harness
 	// returns DecisionEnd from OnResult.
+	// GAP-028: cancelled is terminal — do not rewrite lifecycle state for
+	// already-cancelled sessions.
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		if e.Status == "cancelled" {
+			return
+		}
 		e.CurrentDecisionID = decision.DecisionID
 		e.CurrentDecisionType = decision.Decision
 		if decision.Decision == protocol.DecisionEnd {

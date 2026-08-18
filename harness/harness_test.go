@@ -1183,6 +1183,76 @@ func TestSessionLifecycle_NonEndKeepsActive(t *testing.T) {
 	}
 }
 
+// TestSessionLifecycle_CancelledIsTerminalOnLateResult (GAP-028):
+// process -> cancel (status cancelled) -> late result (harness returns
+// DecisionEnd) -> GET /v1/sessions/{id} status stays "cancelled" and
+// turn_count unchanged (1). The late result must NOT resurrect the session
+// to "completed" or increment turn_count.
+func TestSessionLifecycle_CancelledIsTerminalOnLateResult(t *testing.T) {
+	m := newMockHarness()
+	m.onProcessDec = &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-gap028-proc",
+		Text:       &protocol.TextResp{Content: "thinking...", Finished: false},
+	}
+	m.onResultDec = &protocol.Decision{
+		Decision:   protocol.DecisionEnd,
+		DecisionID: "dec-gap028-end",
+		End:        &protocol.End{Reason: protocol.EndTaskComplete, Summary: "done"},
+	}
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	// 1. process — creates session, turn_count becomes 1.
+	postProcess(t, ts, "sess-gap028")
+
+	// 2. cancel — sets status to "cancelled".
+	cancelResp, err := http.Post(ts.URL+"/v1/cancel", "application/json",
+		strings.NewReader(`{"session_id": "sess-gap028", "reason": "user_interrupt"}`))
+	if err != nil {
+		t.Fatalf("POST /v1/cancel: %v", err)
+	}
+	defer func() { _ = cancelResp.Body.Close() }()
+	if cancelResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", cancelResp.StatusCode)
+	}
+
+	// Verify status is cancelled right after cancel.
+	sr := getSession(t, ts, "sess-gap028")
+	if sr.Status != protocol.SessionCancelled {
+		t.Fatalf("expected status %q after cancel, got %q", protocol.SessionCancelled, sr.Status)
+	}
+	if sr.TurnCount != 1 {
+		t.Fatalf("expected turn_count 1 after process+cancel, got %d", sr.TurnCount)
+	}
+
+	// 3. late result — harness returns DecisionEnd, but session is cancelled.
+	// The result must NOT overwrite status or increment turn_count.
+	resultBody := `{
+		"session_id": "sess-gap028",
+		"decision_id": "dec-gap028-proc",
+		"result": {"type": "tool_result", "tool_name": "test", "success": true}
+	}`
+	resultResp, err := http.Post(ts.URL+"/v1/result", "application/json", strings.NewReader(resultBody))
+	if err != nil {
+		t.Fatalf("POST /v1/result: %v", err)
+	}
+	defer func() { _ = resultResp.Body.Close() }()
+	if resultResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 (permissive), got %d", resultResp.StatusCode)
+	}
+
+	// 4. GET session — status must still be "cancelled", turn_count still 1.
+	sr = getSession(t, ts, "sess-gap028")
+	if sr.Status != protocol.SessionCancelled {
+		t.Errorf("expected status %q (cancelled is terminal), got %q", protocol.SessionCancelled, sr.Status)
+	}
+	if sr.TurnCount != 1 {
+		t.Errorf("expected turn_count 1 (unchanged by late result), got %d", sr.TurnCount)
+	}
+}
+
 // BenchmarkHandlerProcess measures end-to-end handler latency for a POST /v1/process request.
 func BenchmarkHandlerProcess(b *testing.B) {
 	m := newMockHarness()
