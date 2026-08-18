@@ -89,11 +89,10 @@ go test ./... -count=1                     # repo suite, ~0.5s
   /v1/sessions/{id}` calls `OnSessionTerminate` then removes the session —
   a later `GET` returns 404 (GAP-014). `POST /v1/cancel` is the soft path:
   it keeps the session retrievable with status `cancelled`.
-- **A panicking harness gets a text/plain 500** (`internal server error`),
-  not the JSON `ErrorResponse` the protocol requires — verified live
-  2026-08-18 (GAP-027, P1, open at time of writing). If your client parses
-  every error as JSON, handle the non-JSON body or fix the recover path.
-  The battery cannot detect this; probe it yourself with a panic trigger.
+- **A panicking harness gets a JSON 500** `INTERNAL_ERROR` — the recover
+  path returns `{"error":{"code":"INTERNAL_ERROR","message":"internal server error"}}`
+  with `Content-Type: application/json` (GAP-027, fixed 2026-08-18). The
+  process keeps serving after the panic.
 - **Cancel is not terminal in the status machine**: a late `result` after
   `cancel` flips the session status from `cancelled` back to `completed`
   and bumps `turn_count` (verified live 2026-08-18, GAP-028, P2). Don't

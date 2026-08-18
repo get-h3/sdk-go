@@ -23,6 +23,11 @@ type EchoHarness struct {
 
 // OnProcess echoes the user's message content.
 func (h *EchoHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+	// GAP-027: panic trigger for the dogfood probe — exact content match.
+	if req.Message.Content == "panic now" {
+		panic(fmt.Errorf("boom"))
+	}
+
 	content := fmt.Sprintf("Echo: %s", req.Message.Content)
 
 	// Track streaming mode: messages containing "do not finish" trigger unfinished text

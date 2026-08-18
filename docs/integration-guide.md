@@ -243,7 +243,8 @@ Best practices:
 - Do expensive work that can exceed 30s asynchronously (goroutine + `wait`/`poll`
   decision) — the server's request timeout is fixed at 30s.
 - A panic in your code is caught and logged with a stack trace via `slog`; the
-  process keeps serving. Fix panics anyway — the client sees a bare 500.
+  process keeps serving. Fix panics anyway — the client sees a `500` JSON
+  `ErrorResponse` with code `INTERNAL_ERROR`.
 
 ## 7. Troubleshooting
 

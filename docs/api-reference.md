@@ -213,7 +213,7 @@ Unknown session → `404 SESSION_NOT_FOUND` (same body as above). If
 | Layer | Behavior |
 |---|---|
 | Request logging | `slog.Info("request completed", method, path, status, duration)` for every request; `slog.Error("harness: panic recovered", error, stack)` on panics |
-| Panic recovery | Catches panics from harness methods, returns `500` plain-text `internal server error`; the process keeps serving |
+| Panic recovery | Catches panics from harness methods, returns `500` with a JSON `ErrorResponse` body `{"error":{"code":"INTERNAL_ERROR","message":"internal server error"}}`; the process keeps serving |
 | Timeout | Custom timeout writer — **fixed 30 seconds**, wired in `withMiddleware`. On expiry the client receives `504` with a JSON `ErrorResponse` body `{"error":{"code":"HARNESS_TIMEOUT","message":"harness did not respond within the timeout"}}` (supersedes the legacy `http.TimeoutHandler` text/plain path) |
 
 There are currently **no configuration knobs** for the middleware: the 30s timeout

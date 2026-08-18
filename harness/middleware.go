@@ -181,7 +181,7 @@ func withMiddleware(next http.Handler) http.Handler {
 					"error", fmt.Sprintf("%v", rec),
 					"stack", string(debug.Stack()),
 				)
-				http.Error(rw.ResponseWriter, "internal server error", http.StatusInternalServerError)
+				writeError(rw.ResponseWriter, http.StatusInternalServerError, protocol.ErrInternalError, "internal server error")
 				rw.statusCode = http.StatusInternalServerError
 			}
 			slog.Info("request completed",
