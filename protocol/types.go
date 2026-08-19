@@ -311,6 +311,7 @@ const (
 	ErrSessionExpired  ErrorCode = "SESSION_EXPIRED"
 	ErrHarnessTimeout  ErrorCode = "HARNESS_TIMEOUT"
 	ErrInternalError   ErrorCode = "INTERNAL_ERROR"
+	ErrNotFound        ErrorCode = "NOT_FOUND"
 )
 
 // ErrorDetail contains the standard H3 error payload.

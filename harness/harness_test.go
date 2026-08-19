@@ -1272,3 +1272,35 @@ func BenchmarkHandlerProcess(b *testing.B) {
 		_ = resp.Body.Close()
 	}
 }
+
+func TestUnknownRouteReturnsJSONNotFound(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/v1/nonexistent-path")
+	if err != nil {
+		t.Fatalf("GET /v1/nonexistent-path: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %q", errResp.Error.Code)
+	}
+	if errResp.Error.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+}

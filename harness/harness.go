@@ -114,7 +114,55 @@ func NewHTTPServer(h Harness) http.Handler {
 	mux.HandleFunc("GET /v1/sessions/{id}", srv.getSessionHandler)
 	mux.HandleFunc("DELETE /v1/sessions/{id}", srv.deleteSessionHandler)
 
-	return withMiddleware(mux)
+	// GAP-034: ServeMux has no exported NotFound field in this toolchain, so
+	// wrap the mux to detect its default text/plain 404 and replace it with a
+	// JSON ErrorResponse. We cannot register a "/" catch-all (it would
+	// intercept wrong-method requests that should get 405), and delegating via
+	// mux.Handler would lose wildcard PathValue population — so let the mux
+	// dispatch normally and intercept only its default 404 output. Handler-level
+	// JSON 404s (e.g. session-not-found) pass through untouched.
+	return withMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		iw := &notFoundInterceptor{ResponseWriter: w}
+		mux.ServeHTTP(iw, r)
+		if iw.intercepted {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound, "route not found")
+		}
+	}))
+}
+
+// notFoundInterceptor wraps a ResponseWriter to detect the ServeMux's default
+// text/plain 404 response. When detected, it suppresses the write and sets
+// intercepted=true so the caller can write a JSON ErrorResponse instead.
+// Handler-level JSON 404s (Content-Type: application/json) pass through
+// untouched.
+type notFoundInterceptor struct {
+	http.ResponseWriter
+	wroteHeader bool
+	intercepted bool
+}
+
+func (w *notFoundInterceptor) WriteHeader(code int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	// Only intercept the ServeMux default 404 (text/plain). Handler-level
+	// 404s use application/json via writeError and must pass through.
+	if code == http.StatusNotFound && w.Header().Get("Content-Type") == "text/plain; charset=utf-8" {
+		w.intercepted = true
+		return
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *notFoundInterceptor) Write(b []byte) (int, error) {
+	if w.intercepted {
+		return len(b), nil // discard the text/plain body
+	}
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 // writeJSON writes a JSON response with the given status code.
