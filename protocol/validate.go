@@ -34,8 +34,8 @@ func (r *ProcessRequest) Validate() error {
 	if r.SessionID == "" {
 		return newValidationError(ErrInvalidRequest, "session_id", "session_id is required")
 	}
-	if r.Message.Role == "" {
-		return newValidationError(ErrInvalidRequest, "message.role", "message.role is required")
+	if r.Message.Role != "user" {
+		return newValidationError(ErrInvalidRequest, "message.role", "message.role must be user")
 	}
 	if r.Identity.Platform == "" {
 		return newValidationError(ErrInvalidRequest, "identity.platform", "identity.platform is required")

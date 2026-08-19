@@ -219,6 +219,46 @@ func TestValidationError_ErrorMethod(t *testing.T) {
 	}
 }
 
+// TestProcessRequestValidate_NonUserRole verifies that a non-'user' message
+// role (e.g. 'system') is rejected with ErrInvalidRequest, matching the
+// protocol schema enum constraint (Message.role must be 'user').
+func TestProcessRequestValidate_NonUserRole(t *testing.T) {
+	r := ProcessRequest{
+		SessionID: "sess-001",
+		Message:   Message{Role: "system", Content: "hi"},
+		Identity:  Identity{Platform: "telegram", ChatID: "1"},
+	}
+	err := r.Validate()
+	if err == nil {
+		t.Fatal("expected error for role 'system', got nil")
+	}
+
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != ErrInvalidRequest {
+		t.Errorf("Code = %q, want %q", ve.Code, ErrInvalidRequest)
+	}
+	field, ok := ve.Details["field"]
+	if !ok || field != "message.role" {
+		t.Errorf("Details[field] = %v, want \"message.role\"", field)
+	}
+}
+
+// TestProcessRequestValidate_ValidUserRole verifies that role 'user' with
+// otherwise-valid fields passes validation (returns nil).
+func TestProcessRequestValidate_ValidUserRole(t *testing.T) {
+	r := ProcessRequest{
+		SessionID: "sess-001",
+		Message:   Message{Role: "user", Content: "hello"},
+		Identity:  Identity{Platform: "telegram", ChatID: "1"},
+	}
+	if err := r.Validate(); err != nil {
+		t.Errorf("expected nil error for valid request, got %v", err)
+	}
+}
+
 func TestValidationError_NilValidate(t *testing.T) {
 	r := ProcessRequest{
 		SessionID: "sess-001",
