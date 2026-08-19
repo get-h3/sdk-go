@@ -2,6 +2,12 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.4] — 2026-08-19
+
+### Fixed
+- `ProcessRequest.Validate()` enforces `message.role == "user"` per the protocol schema (`Message.role`: "Always user for /v1/process messages"). A request with any other role now gets `400` with `{error: {code: INVALID_REQUEST, message: "message.role must be user"}}` instead of a `200` echo. (GAP-032)
+- Harness panic delivery in `withMiddlewareTimeout` is deterministic: the panic channel is drained before flushing in the `done` case, eliminating a select race that occasionally flushed an empty `200` instead of the `500` JSON `INTERNAL_ERROR` response (CI-only flake in `TestPanicRecovery_JSONErrorResponse`). (INT-CI-001)
+
 ## [0.1.3] — 2026-08-18
 
 ### Fixed
