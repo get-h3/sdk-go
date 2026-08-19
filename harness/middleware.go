@@ -149,8 +149,19 @@ func withMiddlewareTimeout(next http.Handler, d time.Duration) http.Handler {
 			// panic-recovery wrapper can catch and handle it.
 			panic(p)
 		case <-done:
-			// Inner handler finished before the deadline — flush its
-			// buffered response to the real ResponseWriter.
+			// Inner handler finished before the deadline. It may still
+			// have panicked: the goroutine fills panicChan BEFORE closing
+			// done, so a non-blocking read here is deterministic — a value
+			// means panic (re-panic for the outer recover), empty means the
+			// handler returned normally (flush its buffered response).
+			// Without this check, select can pick <-done over <-panicChan
+			// when both are ready (uniform pseudo-random choice), silently
+			// swallowing the panic and flushing an empty 200.
+			select {
+			case p := <-panicChan:
+				panic(p)
+			default:
+			}
 			if err := tw.flush(); err != nil {
 				slog.Error("harness: error flushing timeout-buffered response", "error", err)
 			}
