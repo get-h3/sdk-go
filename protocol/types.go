@@ -303,15 +303,16 @@ type SessionTerminateResponse struct {
 type ErrorCode string
 
 const (
-	ErrInvalidRequest  ErrorCode = "INVALID_REQUEST"
-	ErrInvalidDecision ErrorCode = "INVALID_DECISION"
-	ErrUnknownTool     ErrorCode = "UNKNOWN_TOOL"
-	ErrUnknownModel    ErrorCode = "UNKNOWN_MODEL"
-	ErrSessionNotFound ErrorCode = "SESSION_NOT_FOUND"
-	ErrSessionExpired  ErrorCode = "SESSION_EXPIRED"
-	ErrHarnessTimeout  ErrorCode = "HARNESS_TIMEOUT"
-	ErrInternalError   ErrorCode = "INTERNAL_ERROR"
-	ErrNotFound        ErrorCode = "NOT_FOUND"
+	ErrInvalidRequest   ErrorCode = "INVALID_REQUEST"
+	ErrInvalidDecision  ErrorCode = "INVALID_DECISION"
+	ErrUnknownTool      ErrorCode = "UNKNOWN_TOOL"
+	ErrUnknownModel     ErrorCode = "UNKNOWN_MODEL"
+	ErrSessionNotFound  ErrorCode = "SESSION_NOT_FOUND"
+	ErrSessionExpired   ErrorCode = "SESSION_EXPIRED"
+	ErrHarnessTimeout   ErrorCode = "HARNESS_TIMEOUT"
+	ErrInternalError    ErrorCode = "INTERNAL_ERROR"
+	ErrNotFound         ErrorCode = "NOT_FOUND"
+	ErrMethodNotAllowed ErrorCode = "METHOD_NOT_ALLOWED"
 )
 
 // ErrorDetail contains the standard H3 error payload.

@@ -1304,3 +1304,35 @@ func TestUnknownRouteReturnsJSONNotFound(t *testing.T) {
 		t.Error("expected non-empty error message")
 	}
 }
+
+func TestWrongMethodReturnsJSONMethodNotAllowed(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/v1/health", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /v1/health: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", resp.StatusCode)
+	}
+
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrMethodNotAllowed {
+		t.Errorf("expected ErrMethodNotAllowed, got %q", errResp.Error.Code)
+	}
+	if errResp.Error.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+}
