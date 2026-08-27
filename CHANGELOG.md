@@ -2,6 +2,12 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.5] — 2026-08-27
+
+### Fixed
+- Unknown-route requests now return `404` with a JSON `ErrorResponse` (`code: NOT_FOUND`) instead of `text/plain "404 page not found"` — the mux default for unmatched paths previously bypassed the JSON error envelope, contradicting the documented "every error response, all endpoints" wire shape. (GAP-034)
+- Wrong-method requests now return `405` with a JSON `ErrorResponse` (`code: METHOD_NOT_ALLOWED`) instead of `text/plain "Method Not Allowed"` — the not-found interceptor now traps `405` (and other text/plain mux defaults) in addition to `404`. (GAP-035)
+
 ## [0.1.4] — 2026-08-19
 
 ### Fixed
