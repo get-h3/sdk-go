@@ -28,7 +28,7 @@ import (
 )
 
 // EchoHarness implements all 5 Harness methods and is H3-compliant
-// (passes the full h3-test battery, 44/44).
+// (passes the full h3-test battery, 45/45).
 type EchoHarness struct {
     mu            sync.Mutex
     responseCount int

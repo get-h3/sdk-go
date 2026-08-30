@@ -144,11 +144,11 @@ jobs:
           cat battery-server.log || true
           exit 1
 
-      - name: Run h3-test battery (44/44 gate)
+      - name: Run h3-test battery (45/45 gate)
         run: |
           set -o pipefail
           h3-test --endpoint http://localhost:9191 | tee battery.log
-          grep -q "44/44" battery.log
+          grep -q "45/45" battery.log
 
       - name: Kill harness
         if: always()
