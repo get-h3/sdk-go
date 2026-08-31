@@ -26,7 +26,7 @@ go get github.com/get-h3/sdk-go@latest     # -> added v0.1.2 (published path WOR
 # write main.go (5-method Harness impl), then:
 go build ./... && go vet ./... && go test ./...
 go run main.go                              # serves :9191
-h3-test --endpoint http://localhost:9191    # 44/44 PASSED in 0.16s
+h3-test --endpoint http://localhost:9191    # 45/45 PASSED in 0.16s
 ```
 
 ## Evidence table (every promise probed live)
@@ -44,7 +44,7 @@ h3-test --endpoint http://localhost:9191    # 44/44 PASSED in 0.16s
 | Validation errors | process without session_id | ✅ `400 {"error":{"code":"INVALID_REQUEST"}}` |
 | DELETE removes session | DELETE then GET | ✅ `{terminated:true}` then 404 (GAP-014/017 fixed) |
 | Timeout → 504 JSON HARNESS_TIMEOUT | (impl verified 08-08; code+docs agree today) | ✅ code path `writeError(504, HARNESS_TIMEOUT)` |
-| Compliance gate | `h3-test` battery | ✅ **44/44 in 0.16s** (exit 0) |
+| Compliance gate | `h3-test` battery | ✅ **45/45 in 0.16s** (exit 0) |
 | Race-free under concurrency | 6 parallel sessions under `go run -race` | ✅ 0 data races |
 | Unit-test with MockHermes | `testbed.NewMockHermes` | ✅ 4/4 tests pass (see caveat GAP-029) |
 | Repo test suite fast | `go test -short` | ✅ 0.35s total |
@@ -218,7 +218,7 @@ pass. (Panic-path test needed a manual `recover()` wrapper — see GAP-029.)
 ## Bottom line
 
 The published module now delivers exactly what it promises: a zero-dependency
-Go SDK with which a developer builds a 44/44-compliant agent harness in minutes.
+Go SDK with which a developer builds a 45/45-compliant agent harness in minutes.
 Every documented behavior I probed held up. The remaining gaps are error-path
 edges (panic response shape, cancel-then-result lifecycle, testbed panic
 guardrail) — all on the board as GAP-027..GAP-030.

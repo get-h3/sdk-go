@@ -26,13 +26,13 @@ constraint that makes `go get` offline-friendly):
   `HARNESS_TIMEOUT` 504 — the 30s deadline is a hardcoded constant, not
   configurable.
 - **`testbed/`** — `MockHermes` (SendMessage/SendResult/SendCancel/
-  TerminateSession), `ConformanceHarness` (the 44/44 reference harness),
+  TerminateSession), `ConformanceHarness` (the 45/45 reference harness),
   `DefaultContext()/DefaultTools()/DefaultModels()` for fast unit tests.
 - **`cmd/` + `examples/`** — `gen-types` generator; minimal/echo/conformance/
   consensus examples; `h3-consensus-adapter` (external-agent bridge, refactored
   onto SDK types in GAP-007).
 
-Compliance is gated by **`h3-test`** (44 tests, 6 categories) from
+Compliance is gated by **`h3-test`** (45 tests, 6 categories) from
 `get-h3/shim` — a black-box HTTP battery run against any running harness.
 
 ## 2. Error history (what was found and fixed — and what it teaches)
@@ -110,7 +110,7 @@ table: `docs/dogfood/2026-08-18-integration.md`.
 
 **Everything held up.** `go get` → v0.1.2; build/vet/tests clean; all 6
 endpoints behave per OpenAPI; all 6 decision types serialize correctly;
-`h3-test` 44/44 in 0.16s; `go run -race` + 6 concurrent sessions → 0 races;
+`h3-test` 45/45 in 0.16s; `go run -race` + 6 concurrent sessions → 0 races;
 `go test -short` 0.35s. The fixes from GAP-003 through GAP-026 are real and
 observable (404s, completed status, cancelled_decision_id, DELETE-as-removal,
 504 JSON timeout).
