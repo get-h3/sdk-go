@@ -67,3 +67,4 @@ promise tested, top findings, and time-to-first-success.
   working example), docs/dogfood/diagnostics.md §5, skills/h3-sdk-go-usage
   SKILL.md v1.0.2 (3 new traps), board tasks GAP-027..GAP-030, board event 146.
 - **Foreman:** cooldown 21600 ≥ 14400 — woken to 900 after adding work.
+2026-09-01 | SHIPPABLE | 24s t2fs | friction 4 | 5 findings

@@ -1,0 +1,10 @@
+
+## Dogfood Findings (2026-09-01)
+Verdict: SHIPPABLE
+Promise: {"entry_point":"Go library/SDK (module github.com/get-h3/sdk-go, packages protocol/, harness/, testbed/) consumed via go get; the runnable artifact is your own harness main.go or the example HTTP harness servers (examples/echo, minimal, conformance, consensus) that serve the H3 REST API on :9191; co
+
+- [P2] make lint can silently false-green — Makefile lint target is `golangci-lint run ./... 2>/dev/null || staticcheck ./... 2>/dev/null || echo "lint: no linter available"` — with neither linter installed it prints a message but exits 0, so a user sees green without a real lint pass. With golangci-lint present it ran clean (0 issues) per the dogfood run.
+- [P2] Battery count drifts across repos (44 vs 45) — umbrella /home/kara/get-h3/AGENTS.md (lines 24, 52) and shim/AGENTS.md (lines 19, 24) say 44 tests; sdk-python/AGENTS.md and the SDK README say 45/45. Reality: test_battery.py contains exactly 45 test functions (test_1_1..test_6_5, incl. 5_9b) and h3-test output reports 45/45 — the 44 references are stale.
+- [P2] README's headline 45/45 claim is not self-verifiable — README line 31 claims 'passes the full h3-test battery, 45/45' and line 153 references get-h3/shim, but the install+run steps (git clone shim, pip install -e ., h3-test --endpoint http://localhost:9191) appear only in docs/examples.md and integration-guide.md — a fresh consumer following the quickstart cannot verify the claim from the README alone.
+- [P2] All four examples hardcode :9191 with no collision hint — minimal/main.go:55, echo/main.go:100, conformance/main.go:21, consensus/main.go:367 all ListenAndServe(":9191") — starting a second example while one runs dies with 'address already in use' and nothing in the README warns about it (confirmed by grep across examples/).
+- [P2] First-run bind delay undocumented — First `go run ./examples/echo/` compiles ~10-12s before :9191 binds; the dogfood run hit HTTP:000 connection refused on early curls and the README gives no startup-time/readiness hint (works:true — transient only).
