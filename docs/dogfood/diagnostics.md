@@ -131,3 +131,76 @@ history on every decision, guard shared state with `sync.Mutex`, gate with
 `h3-test` (0.16s), then probe beyond the battery: panic (GAP-027), cancel-then-
 result (GAP-028), and unit-test panics with a manual recover (GAP-029) until
 the testbed grows one.
+
+---
+
+## 6. Dogfood run 2026-09-02 (published v0.1.5; first live run of the async pattern)
+
+**How this run differed:** three prior runs (08-08, 08-18, 09-01) had beaten the
+main path, error contract, and concurrency story into shape. The one documented
+surface nobody had ever *executed* was the async pattern — the prescribed
+answer to the fixed 30s timeout: spawn the slow work in a goroutine, return a
+`wait` decision carrying `duration_seconds` + `poll_endpoint`, and let Hermes
+either poll or fire `wait_timeout` at the decision id you handed it. This run
+built a real harness around exactly that (`h3-slowjobs`, report generation with
+a 4s background job) and probed the error contract on the published module
+rather than HEAD.
+
+**What worked, live (full table: `2026-09-02-integration.md`):**
+
+- The full wait → poll → re-arm → report cycle completes end-to-end, from both
+  the poll path and the `wait_timeout` correlation path. Correlation is by
+  `req.DecisionID` == the id you put on the wait decision — which is why the
+  "always set explicit decision ids" rule exists.
+- The error contract finally matches the docs *on the published module*:
+  panic → 500 JSON INTERNAL_ERROR (GAP-027), 31s block → 504 JSON
+  HARNESS_TIMEOUT at 30.05s (GAP-008), role:'system' → 400 (GAP-032), unknown
+  route → 404 JSON (GAP-034), wrong method → 405 JSON (GAP-035). The
+  "text/plain mux default" bug class that produced GAP-008/027/034/035 is dead.
+- `NewHTTPServer` mounts as a `/v1/` subtree of a consumer-owned mux and passes
+  45/45 there — its 404/405 interceptor is path-agnostic. Consumers do not need
+  to dedicate a port's route table to H3.
+
+**What went wrong and why (the instructive part):**
+
+1. *My own first draft had a data race*: the background goroutine locked a
+   per-job mutex while handlers locked the harness mutex. Mixed lock scopes are
+   a race by design; `-race` caught it immediately. Lesson: the docs' "guard
+   shared harness state with `sync.Mutex`" means ONE mutex for everything the
+   goroutine and the HTTP handlers touch — per-entity mutexes are how you lose.
+   This is also the predictable failure mode of a pattern with no runnable
+   example (GAP-042): consumers will invent it and make this exact mistake.
+2. *Raw curls 400'd on `identity.platform`/`identity.chat_id`* — required
+   fields, but no copy-pasteable curl exists above api-reference §2 (GAP-040).
+3. *testbed cannot inject history* (`SendMessage` hardcodes `DefaultContext()`),
+   so the history-passthrough pattern can only be unit-tested by driving
+   `OnProcess` raw (GAP-039).
+4. *Release drift, 5th recurrence* (GAP-038): v0.1.5 is 16 commits behind HEAD.
+   Benign this time — the diff is docs/board/CI, zero wire changes — but the
+   tag-on-every-green-tick rule keeps not sticking. The run's consumer-path
+   check is what detects this class; it cost 5 minutes here and has cost a
+   broken wire contract before (GAP-025/031/036).
+
+**The right way for async work (proven):**
+
+```go
+// OnProcess: start the work, hand back a wait decision
+j.waitID = protocol.GenerateUUID()
+go func(j *job) { /* slow work; lock the HARNESS mutex when touching state */ }(j)
+return &protocol.Decision{Decision: protocol.DecisionWait, DecisionID: j.waitID,
+    Wait: &protocol.Wait{Reason: "...", DurationSeconds: intPtr(5), PollEndpoint: "/v1/process"}}, nil
+
+// OnResult: Hermes fired the wait_timeout for that id
+if req.Result.Type == protocol.ResultWaitTimeout {
+    if j := byWaitID(req.DecisionID); j != nil {
+        if j.done { return textDecision(j.report), nil }
+        j.waitID = protocol.GenerateUUID()          // re-arm with a NEW id
+        return waitDecision(j.waitID, j.reason), nil
+    }
+}
+```
+
+**Known limits (as of this run):** sessions remain in-memory (restart forgets
+jobs — a real deployment persists its own job table); the timeout stays fixed
+at 30s with no knob (by design, documented); the battery still cannot drive a
+harness panic or a >30s block, so those probes stay manual.

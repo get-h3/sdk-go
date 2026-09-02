@@ -6,7 +6,7 @@ description: >-
   unit-test with testbed, and avoid the known contract/observability traps.
   Load this skill when working in this repo or building any harness with
   github.com/get-h3/sdk-go.
-version: 1.0.2
+version: 1.0.3
 category: software-development
 ---
 
@@ -23,8 +23,8 @@ side. A harness = 5 methods + an HTTP server + a passing `h3-test` battery.
 | Wire types | `protocol/` | `Decision` (6 types), `ProcessRequest`, `ResultRequest`, `ErrorResponse`, `SessionResponse` |
 | Server + interface | `harness/` | `Harness` interface (5 methods), `NewHTTPServer(h) http.Handler` |
 | Test helpers | `testbed/` | `MockHermes`, `ConformanceHarness`, `DefaultContext()` |
-| Docs (read these first) | `docs/integration-guide.md`, `docs/api-reference.md`, `docs/examples.md` | zero-to-44/44 path, contracts, example tour |
-| Compliance gate | `h3-test --endpoint http://localhost:9191` (from get-h3/shim) | 44 tests / 6 categories, ~0.25s |
+| Docs (read these first) | `docs/integration-guide.md`, `docs/api-reference.md`, `docs/examples.md` | zero-to-45/45 path, contracts, example tour |
+| Compliance gate | `h3-test --endpoint http://localhost:9191` (from get-h3/shim) | 45 tests / 6 categories, ~0.5s |
 
 ## Run commands
 
@@ -59,14 +59,47 @@ go test ./... -count=1                     # repo suite, ~0.5s
    `EndError` on failure.
 5. **Never block >30s in a method** — fixed, non-configurable timeout; 504
    JSON `HARNESS_TIMEOUT` on expiry. Long work → goroutine + `wait` decision
-   with `poll_endpoint`.
+   with `poll_endpoint` (proven recipe below).
 6. **Unit-test without HTTP**: `testbed.NewMockHermes(h)` →
    `SendMessage(sessionID, content, user, uid)` / `SendResult(sessionID,
    decisionID, protocol.Result{...})`, assert on returned decisions.
+   Caveat (GAP-039): there is no history-injecting entry point — to test
+   history passthrough, drive `h.OnProcess(&protocol.ProcessRequest{...})`
+   directly with your own `Context.History`.
 7. **Health**: return `HealthOK`, version, transport `rest`,
    protocol_version `1.0`, and your real `Capabilities` list.
 
-## Known traps (verified 2026-08-10 — do not get bitten)
+## Async work recipe (wait/resume — live-verified 2026-09-02)
+
+For any work that could exceed the 30s server timeout:
+
+```go
+// OnProcess: start the work, hand back a wait decision
+j.waitID = protocol.GenerateUUID()
+go func(j *job) {
+    /* slow work; when touching shared state use the HARNESS mutex, not a
+       per-entity one — mixed lock scopes are a data race (`go test -race`
+       catches it; this run's own first draft raced exactly that way) */
+}(j)
+return &protocol.Decision{Decision: protocol.DecisionWait, DecisionID: j.waitID,
+    Wait: &protocol.Wait{Reason: "...", DurationSeconds: intPtr(5),
+                         PollEndpoint: "/v1/process"}}, nil
+
+// OnResult: Hermes fired wait_timeout for that id
+if req.Result.Type == protocol.ResultWaitTimeout {
+    if j := byWaitID(req.DecisionID); j != nil {      // correlate by decision id
+        if j.done { return textDecision(j.report), nil }
+        j.waitID = protocol.GenerateUUID()            // re-arm with a NEW id
+        return waitDecision(j.waitID), nil
+    }
+}
+```
+
+**Mounting:** `NewHTTPServer` can be a subtree of your own mux —
+`root.Handle("/v1/", harness.NewHTTPServer(h))` — and still passes 45/45
+(the 404/405 JSON interceptor is path-agnostic; verified live).
+
+## Known traps (verified 2026-09-02 — do not get bitten)
 
 - **Battery green ≠ contract clean.** The battery checks status codes and key
   presence, not value semantics. Probe error paths yourself with curl.
@@ -93,22 +126,26 @@ go test ./... -count=1                     # repo suite, ~0.5s
   path returns `{"error":{"code":"INTERNAL_ERROR","message":"internal server error"}}`
   with `Content-Type: application/json` (GAP-027, fixed 2026-08-18). The
   process keeps serving after the panic.
-- **Cancel is not terminal in the status machine**: a late `result` after
-  `cancel` flips the session status from `cancelled` back to `completed`
-  and bumps `turn_count` (verified live 2026-08-18, GAP-028, P2). Don't
-  trust `completed` after a cancel — treat `cancelled` as the authoritative
-  terminal state in your reconciler.
-- **MockHermes does not recover panics**: a panicking harness crashes
-  `go test` with a raw goroutine dump (verified 2026-08-18, GAP-029, P3).
-  Wrap panicky calls in `recover()` in your own tests until the testbed
-  grows a guardrail.
+- **Cancel IS terminal now (GAP-028, fixed 2026-08-18):** a late `result`
+  after `cancel` no longer resurrects the session — status stays `cancelled`
+  and `turn_count` is untouched (verified live on the 08-18 build). Older
+  advice about reconcilers not trusting `completed` after a cancel is
+  obsolete; do not re-add workarounds.
+- **MockHermes DOES recover panics (GAP-029, fixed 2026-08-18):** a panicking
+  harness surfaces as a returned error from SendMessage/SendResult/etc., not a
+  crashed test binary (live-verified 2026-09-02). Remaining testbed gap:
+  no history injection (GAP-039) — drive OnProcess raw for that.
+- **Required request fields trip raw curls**: `identity.platform` and
+  `identity.chat_id` are mandatory alongside `session_id` + `message.role`.
+  Copy a full body from `docs/api-reference.md` §2 (README/quickstart curl
+  examples still missing — GAP-040).
 - Strays in the repo (`.vfs/.dirty`, `dagger.db`, `gen-types`, `echo`,
   `minimal`, `h3-consensus-adapter` binaries) are intentional leftovers —
   leave them untracked.
 
 ## Verifying your harness end-to-end (L3 checklist)
 
-1. `h3-test` → 44/44.
+1. `h3-test` → 45/45.
 2. curl full loop: process (tool_call) → result (tool_result) → result
    (text_sent) → end; confirm history grows, never shrinks.
 3. curl error paths: malformed JSON (400), missing session_id (400), unknown

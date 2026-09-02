@@ -68,3 +68,27 @@ promise tested, top findings, and time-to-first-success.
   SKILL.md v1.0.2 (3 new traps), board tasks GAP-027..GAP-030, board event 146.
 - **Foreman:** cooldown 21600 ≥ 14400 — woken to 900 after adding work.
 2026-09-01 | SHIPPABLE | 24s t2fs | friction 4 | 5 findings
+
+## 2026-09-02 — SHIPPABLE (published-consumer re-check + first live async-pattern run)
+
+- **Verdict:** ✅ SHIPPABLE
+- **Promise tested:** build an H3-compliant harness from the PUBLISHED module
+  (v0.1.5) and run the documented async pattern (goroutine + `wait` +
+  `poll_endpoint`) end-to-end — never live-tested in the 08-08/08-18/09-01 runs.
+- **What was done:** consumer module "slowjobs" in /tmp/dogfood-h3-sdk-go-2026-09-02:
+  real background job (~4s) → wait decision with poll_endpoint → poll → report
+  text; wait_timeout correlation + re-arm; panic/timeout/validation/route/method
+  error-contract probes; subtree mux mount; MockHermes unit tests; go test -race
+  (consumer race found + fixed; SDK race-free); battery 45/45 ×2 (0.51–0.54s).
+- **Time-to-first-success:** ~6 min to a compiling, battery-passing harness
+  (README-quickstart + NewDecision pattern); the curl workflow needed api-reference
+  §2 (no request examples in README/quickstart — filed GAP-040).
+- **Friction count:** 4 real frictions + 1 consumer-side race (mine, instructive).
+- **Top findings:** GAP-038 release drift 5th recurrence (benign: docs/CI only);
+  GAP-039 testbed history injection missing; GAP-040 no curl examples in
+  README/quickstart; GAP-041 api-reference:117 stale role rule; GAP-042 no
+  runnable wait/resume example.
+- **Left behind:** docs/dogfood/2026-09-02-integration.md (full probe table +
+  slowjobs source), docs/dogfood/diagnostics.md §6, skills/h3-sdk-go-usage
+  SKILL.md v1.0.3 (async-pattern recipe + updated traps), board GAP-038..042.
+- **Foreman:** cooldown 259200s — woken to 900 after filing work.

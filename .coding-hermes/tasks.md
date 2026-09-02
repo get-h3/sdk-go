@@ -8,3 +8,19 @@ Promise: {"entry_point":"Go library/SDK (module github.com/get-h3/sdk-go, packag
 - [P2] README's headline 45/45 claim is not self-verifiable — README line 31 claims 'passes the full h3-test battery, 45/45' and line 153 references get-h3/shim, but the install+run steps (git clone shim, pip install -e ., h3-test --endpoint http://localhost:9191) appear only in docs/examples.md and integration-guide.md — a fresh consumer following the quickstart cannot verify the claim from the README alone.
 - [P2] All four examples hardcode :9191 with no collision hint — minimal/main.go:55, echo/main.go:100, conformance/main.go:21, consensus/main.go:367 all ListenAndServe(":9191") — starting a second example while one runs dies with 'address already in use' and nothing in the README warns about it (confirmed by grep across examples/).
 - [P2] First-run bind delay undocumented — First `go run ./examples/echo/` compiles ~10-12s before :9191 binds; the dogfood run hit HTTP:000 connection refused on early curls and the README gives no startup-time/readiness hint (works:true — transient only).
+
+## Dogfood Findings (2026-09-02)
+
+Verdict: SHIPPABLE (published-consumer re-check + first live run of the async wait/resume pattern)
+Promise: a Go developer can build an H3-compliant agent harness from the published module (`go get github.com/get-h3/sdk-go@latest`), serve it with `harness.NewHTTPServer`, and pass the h3-test battery — including the documented async pattern (goroutine + `wait` decision + `poll_endpoint`) for work that would exceed the fixed 30s timeout.
+
+What was done: fresh consumer module in /tmp/dogfood-h3-sdk-go-2026-09-02 on published v0.1.5 (no replace directive). Built "slowjobs" — a report-generation harness that spawns a real background job (~4s), returns `wait` with `poll_endpoint`, re-arms on `wait_timeout`, and delivers the report text when done. Also probed: panic recovery, 31s-block timeout, malformed JSON, role:system, unknown route, wrong method, subtree mux mounting, `testbed.MockHermes` unit tests, `go test -race` (consumer race found and fixed; SDK race-free), battery 45/45 twice (0.51–0.54s).
+
+Live evidence: wait→poll→report completed end-to-end; wait_timeout correlation + re-arm works; panic → 500 JSON INTERNAL_ERROR (GAP-027 fix verified on published module); 31s block → 504 JSON HARNESS_TIMEOUT at 30.05s (GAP-008); role:system → 400 (GAP-032); unknown route → 404 JSON NOT_FOUND (GAP-034); wrong method → 405 JSON METHOD_NOT_ALLOWED (GAP-035); malformed JSON → 400 JSON. NewHTTPServer mounts cleanly under a custom `/v1/` subtree of a consumer mux.
+
+Tasks filed (board `.coding-hermes/board/tasks.jsonl`):
+- GAP-038 (P2): release drift again — v0.1.5 is 16 commits behind HEAD (benign: docs/CI only, no wire changes); 5th occurrence of the tagging class.
+- GAP-039 (P2): MockHermes cannot inject conversation history (SendMessage hardcodes DefaultContext) — history-passthrough untestable via the documented testbed API.
+- GAP-040 (P2): no curl/request-body examples in README or integration-guide — first two live process calls 400'd on identity fields; full body exists only deep in api-reference §2.
+- GAP-041 (P3): api-reference.md:117 still says message.role "non-empty"; GAP-032 tightened it to must equal "user" (L512 already correct).
+- GAP-042 (P3): documented async wait/resume pattern has no runnable example in examples/ — consumers must invent it (and will likely mix mutex scopes; this run's own draft did).
