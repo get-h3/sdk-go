@@ -1,4 +1,15 @@
 
+## Dogfood Findings (2026-09-05)
+
+Verdict: SHIPPABLE (3rd consecutive) — first llm_call consumer workflow + first concurrency probe. Consumer: 2-model deliberation harness on published v0.1.5; battery 45/45; scripted-Hermes loop WORKFLOW_OK; 6 parallel clients clean with unique sessions.
+
+- [P1] GAP-043: same-session data race in SDK harness — resultHandler writes session fields (harness.go:291/292, 321/322 via sessionStore.update) race getSessionHandler reads (harness.go:382); `go build -race` fired 5 reports when concurrent clients shared one session id; unique ids → 0 races, 6/6 OK.
+- [P2] GAP-044: three battery-enforced decision contracts documented nowhere (models=[] forbids llm_call; "do not finish" = streaming mode; Decision.history must never shrink) — consumer failed 3 different tests across 2 iterations purely on these; rules live only in test_battery.py + testbed/conformance.go.
+- [P2] GAP-045: cmd/gen-types is a JSON-validating stub, yet //go:generate + docs present protocol/types.go as generated — `go generate ./protocol/` exits 0 and generates nothing.
+- [P3] GAP-046: no consumer example exercises the llm_call round trip (process → llm_call → result → … → end); this run's deliberation harness is a donatable examples/llm-roundtrip/ candidate.
+- [P3] GAP-047: release drift 6th recurrence — v0.1.5 is 22 commits behind HEAD (GAP-038 measured 16 on 09-02).
+- [P2] SKIPPED-install-bunker: bunker-las-03 lost external DNS (get.docker.com/github.com unresolvable from box; 2 spawns failed at rootless-docker install; agents 372ce4e0/bb7d5c09 destroyed). Substitute: cold-cache `go get @v0.1.5` = 2s, zero deps, battery green from that module. Infra follow-up: restore resolver on 100.69.3.13.
+
 ## Dogfood Findings (2026-09-01)
 Verdict: SHIPPABLE
 Promise: {"entry_point":"Go library/SDK (module github.com/get-h3/sdk-go, packages protocol/, harness/, testbed/) consumed via go get; the runnable artifact is your own harness main.go or the example HTTP harness servers (examples/echo, minimal, conformance, consensus) that serve the H3 REST API on :9191; co

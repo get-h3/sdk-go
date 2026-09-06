@@ -92,3 +92,4 @@ promise tested, top findings, and time-to-first-success.
   slowjobs source), docs/dogfood/diagnostics.md §6, skills/h3-sdk-go-usage
   SKILL.md v1.0.3 (async-pattern recipe + updated traps), board GAP-038..042.
 - **Foreman:** cooldown 259200s — woken to 900 after filing work.
+2026-09-05 | SHIPPABLE | ~5min t2fs | friction 4 | GAP-043..047 + SKIPPED-install-bunker | battery 45/45 | consumer=llm deliberation on published v0.1.5 | same-session race found (P1)

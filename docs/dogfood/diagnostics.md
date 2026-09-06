@@ -204,3 +204,50 @@ if req.Result.Type == protocol.ResultWaitTimeout {
 jobs — a real deployment persists its own job table); the timeout stays fixed
 at 30s with no knob (by design, documented); the battery still cannot drive a
 harness panic or a >30s block, so those probes stay manual.
+
+## 7. Dogfood run 2026-09-05 (published v0.1.5; llm_call round trip + concurrency probe)
+
+**What this run added to the picture:** the 08-08/08-18/09-01/09-02 runs
+covered text/tool_call/wait paths; this one built the first consumer that
+drives **llm_call rounds** (a 2-model deliberation harness) and the first
+**concurrency probe** — and both legs produced new knowledge.
+
+**How gen-types actually works (why protocol/types.go exists):** the
+`//go:generate` line in types.go points at `cmd/gen-types`, which today only
+JSON-validates the 15 schema files and exits 0 — types.go is maintained by
+hand (GAP-045). Treat the schemas as the contract reference and types.go as
+the implementation; do not expect `go generate` to sync them yet.
+
+**The same-session race (GAP-043, new P1):** the harness stores sessions in an
+in-memory map guarded at the map level, but `resultHandler` mutates session
+struct fields inside `sessionStore.update()` closures (turn/llm counters at
+harness.go:291/292, status at 321/322) while `getSessionHandler` reads them
+(harness.go:382) — write vs read on the same session race under `-race`.
+Discovered *accidentally*: our six parallel test clients all built session ids
+from the same-second unix timestamp and collided into shared sessions, firing
+5 race reports and 4 client failures; re-run with unique ids → 6/6 OK, 0
+races. Lesson: identical symptoms can be two bugs (client collision + SDK
+race) — separate them before filing, then file both honestly (the collision
+was ours; the race is the SDK's).
+
+**The undocumented battery contracts (GAP-044):** test 5_8 forbids llm_call
+when `context.models` is empty ("hallucinated model"); the phrase
+"do not finish" in a message switches the battery into streaming expectations
+(`finished=false` now, `true` after the next result); history snapshots must
+monotonically grow. None appear in README/docs — they live in
+`shim/src/h3_shim/test_battery.py` and, by example, `testbed/conformance.go`.
+The right way to learn this SDK's decision semantics is still "read the
+battery source", which is exactly the docs gap GAP-044 asks the foreman to
+close.
+
+**Verification status of older fixes (live, this run):** GAP-DOG-003
+(status becomes `completed` after end) — FIXED in v0.1.5, observed
+`"status": "completed"`; GAP-027 panic → JSON 500 INTERNAL_ERROR — re-verified
+when our own nil-map bug panicked; GAP-040 (identity optional) — shipped, a
+body with only session_id/message/identity-platform/chat_id passes.
+
+**Installability:** the bunker leg could not run — bunker-las-03 lost
+external DNS (get.docker.com and github.com unresolvable from the box; two
+spawns died at rootless-docker install). Substitute proof: cold-cache
+`go get @v0.1.5` = 2s, zero deps, consumer built and passed 45/45 from it.
+Boarded as SKIPPED-install-bunker with the infra signature.

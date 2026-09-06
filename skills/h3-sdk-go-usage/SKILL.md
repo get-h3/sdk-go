@@ -6,7 +6,7 @@ description: >-
   unit-test with testbed, and avoid the known contract/observability traps.
   Load this skill when working in this repo or building any harness with
   github.com/get-h3/sdk-go.
-version: 1.0.3
+version: 1.0.4
 category: software-development
 ---
 
@@ -99,7 +99,46 @@ if req.Result.Type == protocol.ResultWaitTimeout {
 `root.Handle("/v1/", harness.NewHTTPServer(h))` — and still passes 45/45
 (the 404/405 JSON interceptor is path-agnostic; verified live).
 
-## Known traps (verified 2026-09-02 — do not get bitten)
+## The llm_call round-trip recipe (live-verified 2026-09-05, published v0.1.5)
+
+`llm_call` is the one decision type with no shipped example. The proven
+pattern (battery 45/45, scripted-Hermes client green — full source in
+`docs/dogfood/2026-09-05-integration.md`):
+
+```go
+// OnProcess: guard the models contract (see traps), then ask model A.
+if len(req.Context.Models) == 0 { /* text fallback, never llm_call */ }
+hist := d.appendUser(req.SessionID, req.Message.Content) // snapshot incl. new turn
+return &protocol.Decision{Decision: protocol.DecisionLLMCall,
+    DecisionID: "llm-1", History: hist,
+    LLMCall: &protocol.LLMCall{Model: req.Context.Models[0].Name,
+        Messages: []protocol.LLMMessage{{Role: "user", Content: req.Message.Content}}}}, nil
+
+// OnResult: collect answers per session; second round → critique call;
+// after the final answer → synthesis text; after delivering it → end.
+```
+
+State rules that make it pass: keep `map[sessionID][]answer` AND
+`map[sessionID][]HistoryEntry`; delete both in `OnSessionTerminate`; give the
+struct a **constructor** — the README `&EchoHarness{}` zero-value pattern
+panics (`assignment to entry in nil map`) the moment you add state maps.
+
+## Known traps (verified 2026-09-05 — do not get bitten)
+
+- **Same-session concurrency races INSIDE the SDK (GAP-043).** Concurrent
+  requests hitting ONE session — result POSTs vs session-status GETs — race on
+  session fields (`harness.go` resultHandler writes vs getSessionHandler
+  reads; `go build -race` fires). Distinct sessions are clean (6/6 parallel
+  clients, 0 races). Until fixed: never share a session id across concurrent
+  clients/retries; make session ids globally unique.
+- **Three battery contracts are documented only in the battery itself
+  (GAP-044):** (1) `context.models=[]` → returning `llm_call` FAILS test 5_8
+  ("hallucinated model"); (2) "do not finish" in the message = streaming mode →
+  `text.finished=false`, and the next result must flip to `finished=true`;
+  (3) `Decision.history` must NEVER shrink — seed once from context, append
+  every user turn, attach the snapshot to every decision (result-driven ones
+  too). When in doubt, mirror `testbed/conformance.go` — it is the compliant
+  reference implementation.
 
 - **Battery green ≠ contract clean.** The battery checks status codes and key
   presence, not value semantics. Probe error paths yourself with curl.
