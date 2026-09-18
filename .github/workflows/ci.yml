@@ -177,3 +177,23 @@ jobs:
         if: always()
         run: |
           kill $(cat battery-server.pid) || true
+
+  # GAP-038: nothing in this repo reported the distance between main and the
+  # published tag, so the same drift class recurred while every job stayed
+  # green. This job makes that drift visible on every push and is deliberately
+  # INCAPABLE of red-lining main: the script is informational (exit 0 unless an
+  # explicit --fail-over threshold is passed) and continue-on-error keeps the
+  # run non-blocking. fetch-depth: 0 is required — the default shallow checkout
+  # carries no tags, and the script would report NO TAGS instead of the drift.
+  release-drift:
+    name: release-drift
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Report release drift
+        run: sh scripts/check-release-drift.sh

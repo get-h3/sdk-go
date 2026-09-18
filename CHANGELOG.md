@@ -2,6 +2,24 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.6] — 2026-09-18
+
+### Fixed
+- Concurrent requests that share a session id are serialized per session: `harness` returns a snapshot of the session entry taken under the read lock instead of handing callers the live pointer, and the unlocked read sites (`GET /v1/sessions/{id}`, the cancelled-decision read in `POST /v1/cancel`, the terminal-status check in `POST /v1/process`) go through it — removing the data race between a locked result write and an unlocked read on the same session. No response status, body, or header changed. (GAP-043)
+- `testbed.MockHermes` can seed conversation history: `SendMessageWithHistory` and `ContextWithHistory` build the same request `SendMessage` builds with a populated `Context.History`, so the never-shrinking-history contract is testable through the documented testbed API instead of by hand-building a `ProcessRequest`. A nil or empty history behaves exactly like `SendMessage`. (GAP-039)
+- `examples/echo` honors the `PORT` environment variable (default 9191) instead of hardcoding its listen address, and an already-bound port is reported with the address plus the `PORT` override hint instead of a bare listen error; every other listen error stays fatal with a non-zero exit. (DF-H3-9, DF-H3-15)
+
+### Changed
+- The CI battery gate asserts the battery's own `TOTAL … PASSED` summary plus a minimum-run strength floor instead of a pinned compliance-test total, so a shim that grows its suite no longer red-lines a build in which every test passed; the battery's exit code stays authoritative. (CI-SDKGO-001)
+- The cross-language round-trip workflow fires on Go SDK source changes: `push`/`pull_request` triggers path-filtered to `harness/`, `protocol/`, `testbed/`, `cmd/`, `examples/`, `go.mod`, `Makefile` and the workflow file itself, so a wire-format-breaking source change can no longer ship with every workflow green; bookkeeping and prose paths are excluded. (GAP-073)
+
+### Added
+- `scripts/check-test-count.sh` (+ `scripts/test-count.txt`) and a `make verify-counts` target: the repo polices its own compliance/suite count prose — canonical counts → live suite parity → battery parity against the sibling shim checkout → stale-literal sweep with explicit historical exemptions — and CI runs it in the build job. The sweep previously lived only in the umbrella repo, where an SDK-only prose edit is never seen. (H3-GAP-087)
+- `scripts/check-release-drift.sh` (+ `make release-drift`): reports how far `main` has moved past the published tag and how much of that is non-bookkeeping, so untagged wire-facing work is visible before the next `v0.1.x` tag is cut. Exits 0 unless an explicit `--fail-over` threshold is exceeded; CI runs it as an informational, non-blocking job. (GAP-038)
+
+### Docs
+- Compliance-count prose in `README.md`, `docs/` and CI comments swept to the current battery count, in two passes (the README/CI sweep and the `docs/` follow-up) so no surface still quoted the retired numbers. (GAP-045, GAP-037)
+
 ## [0.1.5] — 2026-08-27
 
 ### Fixed

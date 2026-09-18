@@ -120,6 +120,13 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
+The tag is the release of record: `go get github.com/get-h3/sdk-go@latest`
+resolves through it, so fixes merged without a tag never reach consumers.
+Before tagging, run `make release-drift` and confirm the unreleased work is
+intentional — it reports how many non-bookkeeping commits sit past the last tag
+and warns when that backlog grows, but it never fails a build on its own.
+A tag is cut whenever a work tick lands wire-facing fixes.
+
 ## Review Checklist
 
 - [ ] `go test ./...` passes
