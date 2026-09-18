@@ -1,6 +1,34 @@
 name: Sync Protocol
 
 on:
+  # GAP-073: an SDK source change must exercise the cross-language round-trip,
+  # not only a protocol dispatch. Before this, a wire-format-breaking change to
+  # harness/protocol/testbed code shipped with every workflow green and zero
+  # round-trip runs. Paths are scoped to the files that can change the SDK's
+  # wire behaviour; board/.vfs/.gitreins bookkeeping and prose docs are
+  # excluded, so a foreman bookkeeping commit cannot fire the workflow.
+  push:
+    branches: [main]
+    paths:
+      - "harness/**"
+      - "protocol/**"
+      - "testbed/**"
+      - "cmd/**"
+      - "examples/**"
+      - "go.mod"
+      - "Makefile"
+      - ".github/workflows/sync-protocol.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "harness/**"
+      - "protocol/**"
+      - "testbed/**"
+      - "cmd/**"
+      - "examples/**"
+      - "go.mod"
+      - "Makefile"
+      - ".github/workflows/sync-protocol.yml"
   repository_dispatch:
     types: [protocol-update]
   workflow_dispatch:
@@ -11,6 +39,14 @@ env:
 jobs:
   sync:
     name: Sync & Release
+    # GAP-073: this is the protocol SYNC & RELEASE path — its "Create tag" and
+    # "Create GitHub Release" steps run unconditionally, and there is no
+    # protocol_version on a push. Keep it pinned to the events it was written
+    # for: on a push it would tag `v$(date)-sync`, and the second push of the
+    # same day would fail on the existing tag. Because the round-trip job
+    # `needs:` this one, that failure would suppress the very run this workflow
+    # now exists to fire. The round-trip job itself runs for every event.
+    if: ${{ github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -103,5 +139,9 @@ jobs:
           generate_release_notes: false
 
   roundtrip:
+    # GAP-073: unchanged for repository_dispatch/workflow_dispatch — a failed
+    # sync/release still blocks the round-trip — but a SKIPPED sync (the
+    # push/pull_request path, where sync holds no work) must not block it.
     needs: sync
+    if: ${{ !cancelled() && (needs.sync.result == 'success' || needs.sync.result == 'skipped') }}
     uses: get-h3/h3/.github/workflows/roundtrip.yml@main
