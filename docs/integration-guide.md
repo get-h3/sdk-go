@@ -3,10 +3,10 @@
 Zero-to-production for developers building an H3-compliant harness with the Go SDK.
 H3 is the **brain-swap protocol**: your harness becomes the thinking brain of
 [Hermes](https://github.com/get-h3/h3); Hermes is the body. Your harness implements
-5 methods, serves HTTP, and the `h3-test` battery (45 tests, 6 categories) verifies
+5 methods, serves HTTP, and the `h3-test` battery (46 tests, 6 categories) verifies
 compliance against your running endpoint.
 
-**Time to a verified 45/45 harness: under 10 minutes.**
+**Time to a verified 46/46 harness: under 10 minutes.**
 
 ---
 
@@ -56,7 +56,7 @@ go get github.com/get-h3/sdk-go
 
 Create `main.go`. The full reference harness below is the **compliance reference** —
 it is the same logic that ships in `examples/echo` and the README quickstart, and it
-passes the complete 45/45 battery. Copy it verbatim, then read the anatomy notes
+passes the complete 46/46 battery. Copy it verbatim, then read the anatomy notes
 underneath.
 
 ```go
@@ -74,7 +74,7 @@ import (
 )
 
 // EchoHarness implements all 5 methods of harness.Harness and is H3-compliant
-// (passes the full h3-test battery, 45/45).
+// (passes the full h3-test battery, 46/46).
 type EchoHarness struct {
     mu            sync.Mutex
     responseCount int
@@ -195,9 +195,9 @@ Expected output tail — all six categories green:
   Process Basic Flows                 8/8  ✅ PASSED
   Decision Types                      6/6  ✅ PASSED
   Result Handling                     7/7  ✅ PASSED
-  Error & Edge Cases                  11/11  ✅ PASSED
+  Error & Edge Cases                  13/13  ✅ PASSED
   Stress & Performance                5/5  ✅ PASSED
-  TOTAL                               45/45  PASSED
+  TOTAL                               46/46  PASSED
 ```
 
 Exit code `0` means compliant (exact banner/format may vary slightly between shim

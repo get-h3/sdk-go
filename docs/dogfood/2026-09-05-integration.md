@@ -1,5 +1,10 @@
 # Dogfood Integration Report — 2026-09-05
 
+> **Historical (2026-09-05):** point-in-time dogfood record — the compliance-battery
+> counts quoted below were correct when written and are **not live status**. The
+> canonical counts this repo enforces live in `scripts/test-count.txt`, checked by
+> `scripts/check-test-count.sh`.
+
 **Target:** `github.com/get-h3/sdk-go` **published v0.1.5** (no replace directive)
 **Consumer:** multi-model deliberation harness — a workflow no shipped example covers
 **Battery:** h3-test 45/45 (0.33s) · **Workflow:** live llm_call round trip WORKFLOW_OK

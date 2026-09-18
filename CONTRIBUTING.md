@@ -55,7 +55,7 @@ go run ./examples/echo/
 
 # In another terminal, run the compliance test battery:
 h3-test --endpoint http://localhost:9191
-# 43 compliance tests, exit code 0 = compliant
+# 46 compliance tests, exit code 0 = compliant
 ```
 
 ### Sync Protocol Types

@@ -22,6 +22,13 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      # H3-GAP-087 — this repo polices its own count prose: canonical counts
+      # (scripts/test-count.txt) → live suite parity (`go test ./... -list`) →
+      # battery parity against the shim checkout → stale-literal sweep with
+      # explicit historical exemptions. Exit 1 (drift) / 2 (misconfigured) fail.
+      - name: Compliance-test count guard
+        run: sh scripts/check-test-count.sh
+
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -152,9 +159,10 @@ jobs:
           # red-line all three.
           h3-test --endpoint http://localhost:9191 | tee battery.log
           # CI-SDKGO-001: never pin an exact N/N count in this grep. The shim
-          # adds compliance tests over time (44 -> 45 -> 46) and a hardcoded
-          # "45/45" red-lined main for 12 days while every test passed. Assert
-          # the battery's own summary reports PASSED, and guard against a
+          # adds compliance tests over time (44 -> 45 -> 46; the canonical value
+          # lives in scripts/test-count.txt). A hardcoded "45/45" (count-ok-historical:
+          # the 2026-08 gate) red-lined main for 12 days while every test passed.
+          # Assert the battery's own summary reports PASSED, and guard against a
           # truncated run with a strength floor instead of an exact match.
           grep -qE '^  TOTAL +[0-9]+/[0-9]+ +PASSED' battery.log
           checks=$(grep -E '^  TOTAL ' battery.log | grep -oE '[0-9]+/[0-9]+' | head -1)

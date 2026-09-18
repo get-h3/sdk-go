@@ -1,7 +1,14 @@
-.PHONY: build test vet lint fmt clean
+.PHONY: build test test-short vet lint fmt clean verify-counts
 
 build:
 	go build ./...
+
+# H3-GAP-087 — this repo polices its own count prose: canonical counts
+# (scripts/test-count.txt) → live suite parity (`go test ./... -list '^Test'`)
+# → battery parity against the sibling shim checkout → stale-literal sweep with
+# explicit historical exemptions. Exit 0 pass / 1 drift / 2 guard misconfigured.
+verify-counts:
+	sh scripts/check-test-count.sh
 
 test:
 	go test ./... -count=1
@@ -21,4 +28,4 @@ fmt:
 clean:
 	go clean ./...
 
-all: fmt vet build test-short
+all: verify-counts fmt vet build test-short

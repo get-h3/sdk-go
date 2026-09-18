@@ -1,5 +1,10 @@
 # H3 Go SDK — Integration Report (2026-09-02)
 
+> **Historical (2026-09-02):** point-in-time dogfood record — the compliance-battery
+> counts quoted below were correct when written and are **not live status**. The
+> canonical counts this repo enforces live in `scripts/test-count.txt`, checked by
+> `scripts/check-test-count.sh`.
+
 **Run:** dogfood field test #4 of `github.com/get-h3/sdk-go` — published-consumer
 path (`go get @latest` → v0.1.5, no `replace` directive) with a focus no prior
 run had covered: the **async wait/resume pattern** (goroutine + `wait` decision

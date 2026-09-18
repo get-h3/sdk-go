@@ -1,5 +1,10 @@
 # Dogfood Integration Report — 2026-08-08
 
+> **Historical (2026-08-08):** point-in-time dogfood record — the compliance-battery
+> counts quoted below were correct when written and are **not live status**. The
+> canonical counts this repo enforces live in `scripts/test-count.txt`, checked by
+> `scripts/check-test-count.sh`.
+
 **Project:** get-h3/sdk-go — Go SDK for building H3-compliant agent harnesses.
 **Verdict:** 🟡 PROMISING-BUT-ROUGH.
 **How this was produced:** an independent consumer harness was built OUTSIDE the

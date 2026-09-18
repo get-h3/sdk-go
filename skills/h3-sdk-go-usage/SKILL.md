@@ -23,8 +23,8 @@ side. A harness = 5 methods + an HTTP server + a passing `h3-test` battery.
 | Wire types | `protocol/` | `Decision` (6 types), `ProcessRequest`, `ResultRequest`, `ErrorResponse`, `SessionResponse` |
 | Server + interface | `harness/` | `Harness` interface (5 methods), `NewHTTPServer(h) http.Handler` |
 | Test helpers | `testbed/` | `MockHermes`, `ConformanceHarness`, `DefaultContext()` |
-| Docs (read these first) | `docs/integration-guide.md`, `docs/api-reference.md`, `docs/examples.md` | zero-to-45/45 path, contracts, example tour |
-| Compliance gate | `h3-test --endpoint http://localhost:9191` (from get-h3/shim) | 45 tests / 6 categories, ~0.5s |
+| Docs (read these first) | `docs/integration-guide.md`, `docs/api-reference.md`, `docs/examples.md` | zero-to-46/46 path, contracts, example tour |
+| Compliance gate | `h3-test --endpoint http://localhost:9191` (from get-h3/shim) | 46 tests / 6 categories, ~0.5s |
 
 ## Run commands
 
@@ -96,13 +96,13 @@ if req.Result.Type == protocol.ResultWaitTimeout {
 ```
 
 **Mounting:** `NewHTTPServer` can be a subtree of your own mux —
-`root.Handle("/v1/", harness.NewHTTPServer(h))` — and still passes 45/45
+`root.Handle("/v1/", harness.NewHTTPServer(h))` — and still passes 46/46
 (the 404/405 JSON interceptor is path-agnostic; verified live).
 
 ## The llm_call round-trip recipe (live-verified 2026-09-05, published v0.1.5)
 
 `llm_call` is the one decision type with no shipped example. The proven
-pattern (battery 45/45, scripted-Hermes client green — full source in
+pattern (battery green on 2026-09-05, scripted-Hermes client green — full source in
 `docs/dogfood/2026-09-05-integration.md`):
 
 ```go
@@ -184,7 +184,7 @@ panics (`assignment to entry in nil map`) the moment you add state maps.
 
 ## Verifying your harness end-to-end (L3 checklist)
 
-1. `h3-test` → 45/45.
+1. `h3-test` → 46/46.
 2. curl full loop: process (tool_call) → result (tool_result) → result
    (text_sent) → end; confirm history grows, never shrinks.
 3. curl error paths: malformed JSON (400), missing session_id (400), unknown

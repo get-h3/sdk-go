@@ -1,5 +1,10 @@
 # H3 Go SDK — Integration Report (2026-08-18)
 
+> **Historical (2026-08-18):** point-in-time dogfood record — the compliance-battery
+> counts quoted below were correct when written and are **not live status**. The
+> canonical counts this repo enforces live in `scripts/test-count.txt`, checked by
+> `scripts/check-test-count.sh`.
+
 **Run:** dogfood field test of `github.com/get-h3/sdk-go` — the **published-consumer
 path** (plain `go get @latest`, no `replace` directive, no internal helpers).
 **Verdict:** 🟡 PROMISING-BUT-ROUGH (one P1 wire-contract edge, two minor).

@@ -26,13 +26,13 @@ constraint that makes `go get` offline-friendly):
   `HARNESS_TIMEOUT` 504 — the 30s deadline is a hardcoded constant, not
   configurable.
 - **`testbed/`** — `MockHermes` (SendMessage/SendResult/SendCancel/
-  TerminateSession), `ConformanceHarness` (the 45/45 reference harness),
+  TerminateSession), `ConformanceHarness` (the 46/46 reference harness),
   `DefaultContext()/DefaultTools()/DefaultModels()` for fast unit tests.
 - **`cmd/` + `examples/`** — `gen-types` generator; minimal/echo/conformance/
   consensus examples; `h3-consensus-adapter` (external-agent bridge, refactored
   onto SDK types in GAP-007).
 
-Compliance is gated by **`h3-test`** (45 tests, 6 categories) from
+Compliance is gated by **`h3-test`** (46 tests, 6 categories) from
 `get-h3/shim` — a black-box HTTP battery run against any running harness.
 
 ## 2. Error history (what was found and fixed — and what it teaches)
@@ -40,7 +40,7 @@ Compliance is gated by **`h3-test`** (45 tests, 6 categories) from
 | When | Finding | Lesson |
 |---|---|---|
 | 2026-08-04 sweep | GAP-001: AGENTS.md quickstart didn't compile (missing 4 of 5 methods) | Docs rot independently of code; the quickstart is a test artifact, compile it in CI |
-| 2026-08-04 sweep | GAP-002: README echo example failed 3/44 battery tests | A "minimal" example can quietly be non-compliant; the conformance example is the reference |
+| 2026-08-04 sweep | GAP-002: README echo example failed 3/44 battery tests (count-ok-historical: the battery was 44 tests on 2026-08-04) | A "minimal" example can quietly be non-compliant; the conformance example is the reference |
 | 2026-08-04 sweep | GAP-003: cancel/delete response bodies didn't match OpenAPI | The battery checks status codes, not body shapes — curl the contract directly |
 | 2026-08-04 sweep | GAP-004: no docs at all | → integration-guide + api-reference + examples.md |
 | 2026-08-07 sweep | GAP-005: `go generate ./protocol/` broken (schemas missing) | Generated-code repos must ship their inputs |
@@ -110,7 +110,8 @@ table: `docs/dogfood/2026-08-18-integration.md`.
 
 **Everything held up.** `go get` → v0.1.2; build/vet/tests clean; all 6
 endpoints behave per OpenAPI; all 6 decision types serialize correctly;
-`h3-test` 45/45 in 0.16s; `go run -race` + 6 concurrent sessions → 0 races;
+`h3-test` 45/45 in 0.16s (count-ok-historical: the 2026-08-18 run, battery 45 then);
+`go run -race` + 6 concurrent sessions → 0 races;
 `go test -short` 0.35s. The fixes from GAP-003 through GAP-026 are real and
 observable (404s, completed status, cancelled_decision_id, DELETE-as-removal,
 504 JSON timeout).
@@ -158,7 +159,8 @@ rather than HEAD.
   route → 404 JSON (GAP-034), wrong method → 405 JSON (GAP-035). The
   "text/plain mux default" bug class that produced GAP-008/027/034/035 is dead.
 - `NewHTTPServer` mounts as a `/v1/` subtree of a consumer-owned mux and passes
-  45/45 there — its 404/405 interceptor is path-agnostic. Consumers do not need
+  45/45 there (count-ok-historical: the 2026-09-02 run, battery 45 then) — its
+  404/405 interceptor is path-agnostic. Consumers do not need
   to dedicate a port's route table to H3.
 
 **What went wrong and why (the instructive part):**
@@ -249,5 +251,5 @@ body with only session_id/message/identity-platform/chat_id passes.
 **Installability:** the bunker leg could not run — bunker-las-03 lost
 external DNS (get.docker.com and github.com unresolvable from the box; two
 spawns died at rootless-docker install). Substitute proof: cold-cache
-`go get @v0.1.5` = 2s, zero deps, consumer built and passed 45/45 from it.
+`go get @v0.1.5` = 2s, zero deps, consumer built and passed 45/45 from it (count-ok-historical: the 2026-09-05 cold-cache run, battery 45 then).
 Boarded as SKIPPED-install-bunker with the infra signature.

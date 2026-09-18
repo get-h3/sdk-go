@@ -1,0 +1,12 @@
+# Canonical counts for get-h3/sdk-go — policed by scripts/check-test-count.sh
+# (H3-GAP-087). Change a number here ONLY in the same commit that corrects every
+# prose line the guard names.
+#
+# battery = the get-h3/shim compliance battery (`h3-test`): every "N/N compliant"
+#           claim in this repo is about this number. The shim owns the value;
+#           the guard cross-checks it against ../shim/scripts/test-count.txt when
+#           that checkout is present.
+# suite   = this repo's own Go test suite, as counted by
+#           `go test ./... -list '^Test'`.
+battery=46
+suite=128
