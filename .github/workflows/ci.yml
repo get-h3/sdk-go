@@ -144,11 +144,26 @@ jobs:
           cat battery-server.log || true
           exit 1
 
-      - name: Run h3-test battery (45/45 gate)
+      - name: Run h3-test battery (compliance gate)
         run: |
           set -o pipefail
+          # The battery's exit code is authoritative: 0 = compliant, 1 =
+          # compliance failure, 2 = not an H3 endpoint. `set -e` + pipefail
+          # red-line all three.
           h3-test --endpoint http://localhost:9191 | tee battery.log
-          grep -q "45/45" battery.log
+          # CI-SDKGO-001: never pin an exact N/N count in this grep. The shim
+          # adds compliance tests over time (44 -> 45 -> 46) and a hardcoded
+          # "45/45" red-lined main for 12 days while every test passed. Assert
+          # the battery's own summary reports PASSED, and guard against a
+          # truncated run with a strength floor instead of an exact match.
+          grep -qE '^  TOTAL +[0-9]+/[0-9]+ +PASSED' battery.log
+          checks=$(grep -E '^  TOTAL ' battery.log | grep -oE '[0-9]+/[0-9]+' | head -1)
+          ran=${checks%%/*}
+          if [ "${ran:-0}" -lt 40 ]; then
+            echo "::error::battery summary reports only ${ran:-0} checks — expected the full suite"
+            exit 1
+          fi
+          echo "h3-test battery: ${checks} PASSED"
 
       - name: Kill harness
         if: always()
