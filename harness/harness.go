@@ -72,10 +72,29 @@ func (s *sessionStore) create(sessionID string) *sessionEntry {
 	return entry
 }
 
+// get returns the stored entry pointer for existence checks only. Callers MUST
+// NOT read or write fields through the returned pointer — that would be an
+// unlocked access racing update() (GAP-043). Use snapshot() for any read of
+// entry fields.
 func (s *sessionStore) get(sessionID string) *sessionEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.sessions[sessionID]
+}
+
+// snapshot returns a copy of the session entry's fields taken under the read
+// lock. Handlers use it so that every read of a session entry is ordered
+// against the locked writes performed by update(). sessionEntry holds only
+// value types (strings, ints, time.Time), so the returned copy shares no
+// mutable state with the stored entry and is safe to use after RUnlock.
+func (s *sessionStore) snapshot(sessionID string) (sessionEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entry, ok := s.sessions[sessionID]
+	if !ok {
+		return sessionEntry{}, false
+	}
+	return *entry, true
 }
 
 func (s *sessionStore) update(sessionID string, fn func(*sessionEntry)) {
@@ -222,7 +241,10 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 	// Track session — GAP-028: cancelled is terminal. A late POST /v1/process
 	// for an already-cancelled session must not overwrite the entry or
 	// increment turn_count. Harness callbacks still run (permissive).
-	if entry := s.sessions.get(req.SessionID); entry == nil || entry.Status != "cancelled" {
+	// GAP-043: read the status through snapshot() — a raw *sessionEntry from
+	// get() would be read without the store lock while concurrent requests
+	// mutate the same entry under it.
+	if entry, ok := s.sessions.snapshot(req.SessionID); !ok || entry.Status != "cancelled" {
 		s.sessions.create(req.SessionID)
 		s.sessions.update(req.SessionID, func(e *sessionEntry) {
 			e.LastActive = time.Now()
@@ -351,8 +373,10 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 	// GAP-009: report the decision that was in flight when cancel arrived.
 	// If no decision was ever finalized for the session this stays "" —
 	// nothing was in flight, which is the correct empty value.
+	// GAP-043: read the decision id through snapshot() (locked) instead of
+	// dereferencing a raw *sessionEntry from get() with no lock held.
 	cancelledDecisionID := ""
-	if entry := s.sessions.get(req.SessionID); entry != nil {
+	if entry, ok := s.sessions.snapshot(req.SessionID); ok {
 		cancelledDecisionID = entry.CurrentDecisionID
 	}
 
@@ -369,8 +393,10 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 // getSessionHandler handles GET /v1/sessions/{id}.
 func (s *server) getSessionHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
-	entry := s.sessions.get(sessionID)
-	if entry == nil {
+	// GAP-043: every field read below comes from a locked snapshot rather than
+	// a raw *sessionEntry dereferenced after get() returned.
+	entry, ok := s.sessions.snapshot(sessionID)
+	if !ok {
 		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
 			"session not found: "+sessionID)
 		return

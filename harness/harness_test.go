@@ -3,10 +3,12 @@ package harness
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1302,6 +1304,147 @@ func TestUnknownRouteReturnsJSONNotFound(t *testing.T) {
 	}
 	if errResp.Error.Message == "" {
 		t.Error("expected non-empty error message")
+	}
+}
+
+// GAP-043 -------------------------------------------------------------------
+//
+// The session store hands out RAW *sessionEntry pointers from get(): the
+// handler-side reads of that struct happen with NO lock held, while
+// POST /v1/result mutates the same fields inside update() (which does hold the
+// write lock). Locked writes racing unlocked reads on one struct is a genuine
+// data race whenever a single session is hit by concurrent requests.
+
+// concurrentHarness is a Harness implementation that is itself race-free under
+// concurrent handler calls. The shared mockHarness records lastResultReq into a
+// plain field on every OnResult, so N concurrent POST /v1/result calls would
+// make the race detector report the TEST's own field instead of the production
+// bug under test.
+type concurrentHarness struct {
+	mu           sync.Mutex
+	processCalls int
+	resultCalls  int
+}
+
+func (h *concurrentHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+	h.mu.Lock()
+	h.processCalls++
+	h.mu.Unlock()
+	return &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-race-proc",
+		Text:       &protocol.TextResp{Content: "thinking...", Finished: false},
+	}, nil
+}
+
+func (h *concurrentHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+	h.mu.Lock()
+	h.resultCalls++
+	h.mu.Unlock()
+	return &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-race-res",
+		Text:       &protocol.TextResp{Content: "result received", Finished: true},
+	}, nil
+}
+
+func (h *concurrentHarness) OnCancel(req *protocol.CancelRequest) error { return nil }
+
+func (h *concurrentHarness) OnSessionTerminate(sessionID string) error { return nil }
+
+func (h *concurrentHarness) Health() *protocol.HealthResponse {
+	return &protocol.HealthResponse{
+		Status:          protocol.HealthOK,
+		Version:         "1.0.0",
+		Transport:       "rest",
+		ProtocolVersion: "1.0",
+		Capabilities:    []protocol.DecisionType{protocol.DecisionText},
+	}
+}
+
+// resultJSON builds a minimal valid POST /v1/result body for session sid.
+func resultJSON(sid, decisionID string) string {
+	return `{"session_id": "` + sid + `", "decision_id": "` + decisionID +
+		`", "result": {"type": "tool_result", "tool_name": "test", "success": true}}`
+}
+
+// TestConcurrentSameSessionRequestsNoRace (GAP-043): ONE session, then N>=8
+// goroutines concurrently issue POST /v1/result (locked writers) and
+// GET /v1/sessions/{id} (unlocked readers) against that same session id.
+// Pre-fix this fails with "WARNING: DATA RACE" against harness.go; post-fix it
+// passes with 0 races. The final turn-count assertion also pins that the fix is
+// behavior-preserving: every result POST must still land its increment.
+func TestConcurrentSameSessionRequestsNoRace(t *testing.T) {
+	const (
+		sessionID  = "sess-race-1"
+		workers    = 16 // >= 8 by acceptance criteria; half writers, half readers
+		iterations = 25
+	)
+	writers := workers / 2
+
+	srv := NewHTTPServer(&concurrentHarness{})
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	// Create the ONE shared session up front (turn_count becomes 1).
+	postProcess(t, ts, sessionID)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		//nolint:gosec // loop var is captured by value via the parameter.
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				if i%2 == 0 {
+					// Locked writer: update() mutates LastActive/TurnCount/
+					// CurrentDecisionID/CurrentDecisionType/Status.
+					resp, err := http.Post(ts.URL+"/v1/result", "application/json",
+						strings.NewReader(resultJSON(sessionID, "dec-race-proc")))
+					if err != nil {
+						errCh <- fmt.Errorf("worker %d: POST /v1/result: %w", i, err)
+						return
+					}
+					_, _ = io.Copy(io.Discard, resp.Body)
+					_ = resp.Body.Close()
+					if resp.StatusCode != http.StatusOK {
+						errCh <- fmt.Errorf("worker %d: POST /v1/result: expected 200, got %d", i, resp.StatusCode)
+						return
+					}
+					continue
+				}
+
+				// Unlocked reader: getSessionHandler dereferences the raw
+				// *sessionEntry returned by get().
+				resp, err := http.Get(ts.URL + "/v1/sessions/" + sessionID)
+				if err != nil {
+					errCh <- fmt.Errorf("worker %d: GET /v1/sessions/%s: %w", i, sessionID, err)
+					return
+				}
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					errCh <- fmt.Errorf("worker %d: GET /v1/sessions/%s: expected 200, got %d", i, sessionID, resp.StatusCode)
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Error(err)
+	}
+
+	// Behavior preservation: 1 turn from POST /v1/process + one increment per
+	// concurrent POST /v1/result, status never leaves "active".
+	sr := getSession(t, ts, sessionID)
+	if sr.Status != protocol.SessionActive {
+		t.Errorf("expected status %q, got %q", protocol.SessionActive, sr.Status)
+	}
+	if want := 1 + writers*iterations; sr.TurnCount != want {
+		t.Errorf("expected turn_count %d, got %d", want, sr.TurnCount)
 	}
 }
 
