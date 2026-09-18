@@ -159,6 +159,42 @@ go run main.go
 
 You now have a live harness on `http://localhost:9191`.
 
+### Test it with curl
+
+One complete turn against that live harness. `session_id`, `identity.platform`,
+`identity.chat_id` and `message.role: "user"` are all required — omitting any of them
+returns HTTP 400 `INVALID_REQUEST`.
+
+```bash
+# 1. Send a user message
+curl -s -X POST http://127.0.0.1:9191/v1/process \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id": "curl-demo-1",
+    "identity": {"platform": "telegram", "chat_id": "-1001234567890"},
+    "message": {"role": "user", "content": "hello from curl"},
+    "context": {"history": []}
+  }'
+# → {"decision":"text","decision_id":"echo-001","text":{"content":"Echo: hello from curl","finished":true}}
+
+# 2. Report the result of that decision — decision_id comes from step 1
+curl -s -X POST http://127.0.0.1:9191/v1/result \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id": "curl-demo-1",
+    "decision_id": "echo-001",
+    "result": {"type": "tool_result", "success": true}
+  }'
+
+# 3. Inspect the session, then terminate it
+curl -s http://127.0.0.1:9191/v1/sessions/curl-demo-1
+curl -s -X DELETE http://127.0.0.1:9191/v1/sessions/curl-demo-1
+```
+
+The README's [Test it with curl](../README.md#test-it-with-curl) shows the same
+sequence with real response bodies; [api-reference](api-reference.md) section 2 has
+the full HTTP contract for every decision type and error code.
+
 ### Anatomy of a compliant harness
 
 | Piece | What it does |

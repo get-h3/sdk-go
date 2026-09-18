@@ -117,6 +117,65 @@ The harness exposes six REST endpoints:
 | `GET` | `/v1/sessions/{id}` | Get session status |
 | `DELETE` | `/v1/sessions/{id}` | Terminate a session |
 
+## Test it with curl
+
+With the harness above listening on `:9191`, this sequence drives one complete turn.
+Copy it as-is: `identity.platform` and `identity.chat_id` are required by the wire
+contract, and `message.role` must be `user` — omitting any of the three returns HTTP
+400 `INVALID_REQUEST`.
+
+```bash
+# 1. Health check (HTTP 200)
+curl -s http://127.0.0.1:9191/v1/health
+```
+
+```json
+{"status":"ok","version":"1.0.0","transport":"rest","protocol_version":"1.0","capabilities":["text"]}
+```
+
+```bash
+# 2. Send a user message (HTTP 200)
+curl -s -X POST http://127.0.0.1:9191/v1/process \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id": "curl-demo-1",
+    "identity": {"platform": "telegram", "chat_id": "-1001234567890"},
+    "message": {"role": "user", "content": "hello from curl"},
+    "context": {"history": []}
+  }'
+```
+
+```json
+{"decision":"text","decision_id":"echo-001","text":{"content":"Echo: hello from curl","finished":true}}
+```
+
+```bash
+# 3. Inspect the session (HTTP 200)
+curl -s http://127.0.0.1:9191/v1/sessions/curl-demo-1
+
+# 4. Report the result of that decision (HTTP 200) — decision_id comes from step 2
+curl -s -X POST http://127.0.0.1:9191/v1/result \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id": "curl-demo-1",
+    "decision_id": "echo-001",
+    "result": {"type": "tool_result", "success": true}
+  }'
+
+# 5. Terminate the session (HTTP 200) — a following GET returns 404 SESSION_NOT_FOUND
+curl -s -X DELETE http://127.0.0.1:9191/v1/sessions/curl-demo-1
+```
+
+Step 3 returns the live session state, for example:
+
+```json
+{"session_id":"curl-demo-1","turn_count":1,"status":"active","current_decision":"echo-001","current_decision_type":"text"}
+```
+
+Every decision type, every error code and the full field reference:
+[docs/api-reference.md](docs/api-reference.md). Running on another port?
+`examples/echo` honors the `PORT` environment variable — `PORT=9393 go run ./examples/echo/`.
+
 ## Package Structure
 
 | Package | Description |
