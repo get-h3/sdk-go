@@ -43,3 +43,4 @@ dagger.db*
 gen-types
 .gitreins/history/
 .gitreins/usage.jsonl
+.gitreins/logs/
