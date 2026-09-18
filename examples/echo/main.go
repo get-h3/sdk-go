@@ -4,11 +4,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/get-h3/sdk-go/harness"
 	"github.com/get-h3/sdk-go/protocol"
@@ -96,6 +99,16 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "9191"
+	}
+	addr := ":" + port
 	h := harness.NewHTTPServer(&EchoHarness{})
-	log.Fatal(http.ListenAndServe(":9191", h))
+	log.Printf("h3 echo harness listening on %s (set PORT to override)", addr)
+	err := http.ListenAndServe(addr, h)
+	if errors.Is(err, syscall.EADDRINUSE) {
+		log.Fatalf("address already in use on %s — is another harness running? set PORT to override", addr)
+	}
+	log.Fatal(err)
 }
