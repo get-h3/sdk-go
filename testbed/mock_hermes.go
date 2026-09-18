@@ -40,9 +40,40 @@ func (m *MockHermes) recoverErr(r any) error {
 }
 
 // SendMessage simulates Hermes sending a user message to the harness.
-// It constructs a ProcessRequest and calls h.OnProcess.
+// It constructs a ProcessRequest with an empty conversation history
+// (DefaultContext) and calls h.OnProcess.
 // Returns the Decision from OnProcess.
-func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (dec *protocol.Decision, err error) {
+//
+// SendMessage is equivalent to SendMessageWithHistory with no history, so a
+// request built here has the same shape it has always had: History is an empty,
+// non-nil slice. To exercise harness logic that depends on prior conversation
+// turns, call SendMessageWithHistory (or build the context with
+// ContextWithHistory) instead of driving OnProcess directly.
+func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (*protocol.Decision, error) {
+	return m.SendMessageWithHistory(sessionID, content, nil, userName, userID)
+}
+
+// SendMessageWithHistory simulates Hermes sending a user message to the harness
+// together with the prior conversation turns Hermes recorded for the session.
+// It is the history-injecting companion to SendMessage: the same ProcessRequest
+// (role "user" message, "test" platform identity) is built, but Context.History
+// carries a copy of history instead of being empty.
+//
+// Passing a nil or empty history is identical to calling SendMessage, so a
+// caller can thread a possibly-empty slice through without special-casing.
+// The entries are copied, and the returned Decision is the harness's own (it is
+// not synthesized or rewritten here).
+//
+// Typical use — verify the never-shrinking-history contract through the testbed
+// API rather than by constructing a ProcessRequest by hand:
+//
+//	hist := []protocol.HistoryEntry{
+//		{Role: protocol.RoleUser, Content: "first turn"},
+//		{Role: protocol.RoleAssistant, Content: "first reply"},
+//	}
+//	dec, err := testbed.NewMockHermes(h).SendMessageWithHistory(
+//		"sess-1", "second turn", hist, "alice", "u-1")
+func (m *MockHermes) SendMessageWithHistory(sessionID, content string, history []protocol.HistoryEntry, userName, userID string) (dec *protocol.Decision, err error) {
 	m.decisionCount++
 	m.SessionCount++
 
@@ -59,7 +90,7 @@ func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (d
 			UserName: userName,
 			UserID:   userID,
 		},
-		Context: DefaultContext(),
+		Context: ContextWithHistory(history),
 	}
 
 	defer func() {
@@ -233,6 +264,28 @@ func DefaultContext() protocol.Context {
 			StartedAt:      time.Now().UTC().Format(time.RFC3339),
 		},
 	}
+}
+
+// ContextWithHistory returns a fully populated Context for testing (see
+// DefaultContext) whose History carries a copy of the given conversation turns.
+// It is the context-building half of SendMessageWithHistory, and is useful
+// directly when a test needs to hand a harness a request context of its own.
+//
+// The returned slice is always non-nil: a nil or empty history yields an empty
+// History slice, so ContextWithHistory(nil) equals DefaultContext() exactly.
+func ContextWithHistory(history []protocol.HistoryEntry) protocol.Context {
+	ctx := DefaultContext()
+	ctx.History = cloneHistory(history)
+	return ctx
+}
+
+// cloneHistory copies history so the returned slice never aliases the caller's
+// (mutating the caller's slice after a call must not change what the harness
+// saw) and is never nil.
+func cloneHistory(history []protocol.HistoryEntry) []protocol.HistoryEntry {
+	out := make([]protocol.HistoryEntry, len(history))
+	copy(out, history)
+	return out
 }
 
 // QuickIdentity returns an Identity for quick test setup.

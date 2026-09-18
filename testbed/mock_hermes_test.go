@@ -2,6 +2,7 @@ package testbed
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/get-h3/sdk-go/harness"
@@ -381,6 +382,166 @@ func TestTerminateSessionPanicRecovery(t *testing.T) {
 	}
 	if mh.LastError == nil {
 		t.Error("LastError should be set after panic recovery")
+	}
+}
+
+// historyHarness records the request it is handed (so a test can prove what
+// reached the harness) and echoes the request history back in its Decision,
+// mirroring the never-shrinking-history contract the h3-test battery enforces.
+type historyHarness struct {
+	processCalls int
+	lastRequest  *protocol.ProcessRequest
+}
+
+func (h *historyHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+	h.processCalls++
+	h.lastRequest = req
+	return &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "hist-1",
+		Text: &protocol.TextResp{
+			Content:  "Hist: " + req.Message.Content,
+			Finished: true,
+		},
+		History: req.Context.History,
+	}, nil
+}
+
+func (h *historyHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+	return &protocol.Decision{
+		Decision:   protocol.DecisionEnd,
+		DecisionID: "hist-end",
+		End:        &protocol.End{Reason: protocol.EndTaskComplete, Summary: "done"},
+	}, nil
+}
+
+func (h *historyHarness) OnCancel(req *protocol.CancelRequest) error { return nil }
+
+func (h *historyHarness) OnSessionTerminate(sessionID string) error { return nil }
+
+func (h *historyHarness) Health() *protocol.HealthResponse {
+	return &protocol.HealthResponse{
+		Status:          protocol.HealthOK,
+		Version:         "1.0.0",
+		Transport:       "rest",
+		ProtocolVersion: "1.0",
+	}
+}
+
+var _ harness.Harness = &historyHarness{}
+
+// TestSendMessageWithHistory is the GAP-039 regression: conversation history
+// seeded through the testbed API must reach the harness and must survive into
+// the returned Decision — no raw h.OnProcess call, no hand-built ProcessRequest.
+func TestSendMessageWithHistory(t *testing.T) {
+	h := &historyHarness{}
+	mh := NewMockHermes(h)
+
+	history := []protocol.HistoryEntry{
+		{Role: protocol.RoleUser, Content: "what is the capital of France?"},
+		{Role: protocol.RoleAssistant, Content: "Paris."},
+	}
+
+	dec, err := mh.SendMessageWithHistory("sess-hist", "and of Italy?", history, "alice", "u-42")
+	AssertNoError(t, err)
+	AssertDecisionType(t, dec, protocol.DecisionText)
+	AssertTextContent(t, dec, "Hist: and of Italy?", true)
+
+	// 1. The seeded history reached the harness, in order and verbatim.
+	if h.lastRequest == nil {
+		t.Fatal("harness never received a request")
+	}
+	if h.processCalls != 1 {
+		t.Errorf("expected processCalls=1, got %d", h.processCalls)
+	}
+	got := h.lastRequest.Context.History
+	if len(got) != len(history) {
+		t.Fatalf("harness saw %d history entries, want %d: %+v", len(got), len(history), got)
+	}
+	for i, want := range history {
+		if got[i] != want {
+			t.Errorf("history[%d] = %+v, want %+v", i, got[i], want)
+		}
+	}
+
+	// The rest of the request shape is unchanged: same user message and identity.
+	if h.lastRequest.SessionID != "sess-hist" {
+		t.Errorf("SessionID = %q, want %q", h.lastRequest.SessionID, "sess-hist")
+	}
+	if h.lastRequest.Message.Role != "user" || h.lastRequest.Message.Content != "and of Italy?" {
+		t.Errorf("message = %+v, want role=user content=%q", h.lastRequest.Message, "and of Italy?")
+	}
+	if h.lastRequest.Identity.Platform != "test" ||
+		h.lastRequest.Identity.UserName != "alice" ||
+		h.lastRequest.Identity.UserID != "u-42" {
+		t.Errorf("identity = %+v, want platform=test user=alice id=u-42", h.lastRequest.Identity)
+	}
+
+	// 2. The returned decision preserves the seeded history.
+	if len(dec.History) != len(history) {
+		t.Fatalf("decision history has %d entries, want %d: %+v", len(dec.History), len(history), dec.History)
+	}
+	for i, want := range history {
+		if dec.History[i] != want {
+			t.Errorf("decision history[%d] = %+v, want %+v", i, dec.History[i], want)
+		}
+	}
+
+	// Tracking behavior is unchanged from SendMessage.
+	if mh.SessionCount != 1 {
+		t.Errorf("expected SessionCount=1, got %d", mh.SessionCount)
+	}
+	if len(mh.Decisions) != 1 || mh.Decisions[0] != dec {
+		t.Errorf("expected 1 tracked decision identical to the return value, got %d", len(mh.Decisions))
+	}
+	if mh.LastDecision != dec {
+		t.Error("LastDecision should match the returned decision")
+	}
+}
+
+// TestSendMessageWithHistory_CompatibleAndCopied covers the compatibility half
+// of GAP-039: an absent or empty history must leave every other caller's
+// behavior untouched, and the request must not alias the caller's slice.
+func TestSendMessageWithHistory_CompatibleAndCopied(t *testing.T) {
+	// ContextWithHistory with no history is byte-for-byte DefaultContext().
+	if got, want := ContextWithHistory(nil), DefaultContext(); !reflect.DeepEqual(got, want) {
+		t.Errorf("ContextWithHistory(nil) = %+v, want DefaultContext() %+v", got, want)
+	}
+	if ctx := ContextWithHistory(nil); ctx.History == nil {
+		t.Error("ContextWithHistory(nil).History is nil — want empty non-nil slice")
+	}
+	if ctx := ContextWithHistory([]protocol.HistoryEntry{}); ctx.History == nil {
+		t.Error("ContextWithHistory(empty).History is nil — want empty non-nil slice")
+	}
+
+	// SendMessage and SendMessageWithHistory(nil) reach the harness identically.
+	h1, h2 := &historyHarness{}, &historyHarness{}
+	mh1, mh2 := NewMockHermes(h1), NewMockHermes(h2)
+	dec1, err := mh1.SendMessage("sess-plain", "hello", "tester", "u-1")
+	AssertNoError(t, err)
+	dec2, err := mh2.SendMessageWithHistory("sess-plain", "hello", nil, "tester", "u-1")
+	AssertNoError(t, err)
+	if len(h1.lastRequest.Context.History) != 0 || len(h2.lastRequest.Context.History) != 0 {
+		t.Errorf("expected empty history on both paths, got %d and %d",
+			len(h1.lastRequest.Context.History), len(h2.lastRequest.Context.History))
+	}
+	if dec1.Text == nil || dec2.Text == nil || dec1.Text.Content != dec2.Text.Content {
+		t.Errorf("SendMessage and SendMessageWithHistory(nil) diverged: %+v vs %+v", dec1.Text, dec2.Text)
+	}
+
+	// Mutating the caller's slice after the call must not rewrite history the
+	// harness already saw.
+	h3 := &historyHarness{}
+	mh3 := NewMockHermes(h3)
+	history := []protocol.HistoryEntry{
+		{Role: protocol.RoleUser, Content: "first"},
+		{Role: protocol.RoleAssistant, Content: "second"},
+	}
+	_, err = mh3.SendMessageWithHistory("sess-copy", "third", history, "tester", "u-1")
+	AssertNoError(t, err)
+	history[0].Content = "mutated-after-the-call"
+	if got := h3.lastRequest.Context.History[0].Content; got != "first" {
+		t.Errorf("request aliases the caller's slice: history[0] = %q, want %q", got, "first")
 	}
 }
 
