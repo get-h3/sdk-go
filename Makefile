@@ -27,8 +27,12 @@ test-short:
 vet:
 	go vet ./...
 
+# DF-H3-SDK-GO-FOREMAN-1 — the old one-liner ended in `|| echo "..."`, so a
+# host with neither linter installed exited 0 while checking nothing. The
+# availability/fallback chain now lives in scripts/lint.sh (driven hermetically
+# by scripts/lintguard); absence of both linters fails non-zero.
 lint:
-	golangci-lint run ./... 2>/dev/null || staticcheck ./... 2>/dev/null || echo "lint: no linter available (install golangci-lint or staticcheck)"
+	sh scripts/lint.sh
 
 fmt:
 	gofmt -w .
