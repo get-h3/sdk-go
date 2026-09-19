@@ -185,7 +185,7 @@ Every decision type, every error code and the full field reference:
 
 | Package | Description |
 |---------|-------------|
-| [`protocol/`](./protocol/) | Go types generated from the [H3 protocol JSON Schema](https://github.com/get-h3/protocol) – `ProcessRequest`, `Decision` (6 decision types), `ResultRequest`, `CancelRequest`, `HealthResponse`, and supporting types. |
+| [`protocol/`](./protocol/) | Go wire types maintained against the [H3 protocol JSON Schema](https://github.com/get-h3/protocol) – `ProcessRequest`, `Decision` (6 decision types), `ResultRequest`, `CancelRequest`, `HealthResponse`, and supporting types. `go generate ./protocol/` runs `cmd/gen-types`, a schema validator (it does not emit Go code). |
 | [`harness/`](./harness/) | Harness interface (5 methods) + HTTP handler + middleware (request logging, panic recovery, timeout). The `NewHTTPServer` function returns an `http.Handler` ready to serve. |
 | [`testbed/`](./testbed/) | `MockHermes` for unit testing harness logic — send messages, results, and cancel requests; assert decisions with helper methods. |
 

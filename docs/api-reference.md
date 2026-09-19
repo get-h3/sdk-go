@@ -8,7 +8,7 @@ Packages:
 
 | Package | Purpose |
 |---|---|
-| `protocol` | Wire-format types (generated from the get-h3/protocol JSON Schema), validation, error codes |
+| `protocol` | Wire-format types (maintained by hand against the get-h3/protocol JSON Schema), validation, error codes |
 | `harness` | The `Harness` interface, HTTP server, middleware |
 | `testbed` | `MockHermes` + assertion helpers for unit-testing harness logic |
 

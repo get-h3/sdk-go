@@ -14,7 +14,7 @@ go mod download
 ```
 sdk-go/
 ├── protocol/
-│   ├── types.go       # Go types (generated from protocol repo JSON Schema)
+│   ├── types.go       # Go wire types (maintained by hand against protocol repo JSON Schema)
 │   ├── validate.go    # Protocol-level validation
 │   └── types_test.go
 ├── harness/
@@ -133,8 +133,8 @@ A tag is cut whenever a work tick lands wire-facing fixes.
 - [ ] `go vet ./...` clean
 - [ ] `h3-test --endpoint http://localhost:9191` passes against echo example
 - [ ] New features have tests
-- [ ] Protocol changes regenerated from upstream
-- [ ] No hand-edits to generated types
+- [ ] Protocol changes reconciled with the upstream schema and `go generate ./protocol/` passes
+- [ ] Hand-maintained wire types still match the upstream schema
 
 ## Questions?
 

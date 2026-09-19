@@ -1,5 +1,7 @@
 // Package protocol defines the H3 wire-format types.
-// Generated from get-h3/protocol JSON Schema v1.
+// The Go types are maintained by hand against get-h3/protocol JSON Schema
+// v1 — they are not code-generated. The go:generate command below runs
+// cmd/gen-types, which validates the schema files; it does not emit code.
 //
 //go:generate go run github.com/get-h3/sdk-go/cmd/gen-types schemas/v1/*.json
 package protocol

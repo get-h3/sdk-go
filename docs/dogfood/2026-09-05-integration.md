@@ -71,8 +71,9 @@ Module wiring: `go mod init dogfood-consensus && go get github.com/get-h3/sdk-go
 - Concurrency: 6 parallel clients `CONCURRENT_OK=6/6`, 0 race warnings.
 - `go vet` clean; `go build -race` binary used for the concurrency leg.
 - Repo gates: `go test ./... -short` ok (harness 0.135s, protocol, testbed);
-  `go generate ./protocol/` exits 0 but is a **stub** (validates 15 schemas,
-  generates nothing). → GAP-045.
+  `go generate ./protocol/` exits 0 and validates 15 schemas; it is a schema
+  validator, not a code generator, so it does not rewrite `protocol/types.go`.
+  → GAP-045.
 
 ## Install leg
 

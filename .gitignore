@@ -40,7 +40,8 @@ Thumbs.db
 # Local tool artifacts (debug output, rebuildable caches)
 dagger.db*
 .vfs/.dirty
-gen-types
+# cmd/gen-types is a source directory; only ignore its local build output
+/gen-types
 .gitreins/history/
 .gitreins/usage.jsonl
 .gitreins/logs/

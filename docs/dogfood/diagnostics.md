@@ -10,8 +10,9 @@ work?" — written from a real-use run on 2026-08-08.
 Four packages, zero external dependencies (stdlib only — a deliberate design
 constraint that makes `go get` offline-friendly):
 
-- **`protocol/`** — wire types generated from `get-h3/protocol` JSON Schema
-  (via `cmd/gen-types`, `//go:generate` reads `protocol/schemas/v1/*.json`).
+- **`protocol/`** — wire types maintained by hand against the
+  `get-h3/protocol` JSON Schema. The `//go:generate` directive runs
+  `cmd/gen-types` to validate the JSON schema inputs; it does not emit Go code.
   Key shapes: `Decision` (discriminated union of 6 types), `ProcessRequest`,
   `ResultRequest`, `SessionResponse`, `ErrorResponse` (`{error:{code,message}}`).
   Helpers: `NewDecision(type)` (sets UUIDv4), `GenerateUUID()`, `Validate()`.
@@ -28,7 +29,7 @@ constraint that makes `go get` offline-friendly):
 - **`testbed/`** — `MockHermes` (SendMessage/SendResult/SendCancel/
   TerminateSession), `ConformanceHarness` (the 46/46 reference harness),
   `DefaultContext()/DefaultTools()/DefaultModels()` for fast unit tests.
-- **`cmd/` + `examples/`** — `gen-types` generator; minimal/echo/conformance/
+- **`cmd/` + `examples/`** — `gen-types` schema validator; minimal/echo/conformance/
   consensus examples; `h3-consensus-adapter` (external-agent bridge, refactored
   onto SDK types in GAP-007).
 
@@ -43,7 +44,7 @@ Compliance is gated by **`h3-test`** (46 tests, 6 categories) from
 | 2026-08-04 sweep | GAP-002: README echo example failed 3/44 battery tests (count-ok-historical: the battery was 44 tests on 2026-08-04) | A "minimal" example can quietly be non-compliant; the conformance example is the reference |
 | 2026-08-04 sweep | GAP-003: cancel/delete response bodies didn't match OpenAPI | The battery checks status codes, not body shapes — curl the contract directly |
 | 2026-08-04 sweep | GAP-004: no docs at all | → integration-guide + api-reference + examples.md |
-| 2026-08-07 sweep | GAP-005: `go generate ./protocol/` broken (schemas missing) | Generated-code repos must ship their inputs |
+| 2026-08-07 sweep | GAP-005: `go generate ./protocol/` broken (schemas missing) | Schema-validation commands must ship their inputs |
 | 2026-08-07 sweep | GAP-007: consensus adapter duplicated local protocol types, dropped History → battery history tests failed | Duplicated wire types drift; import the SDK types |
 | 2026-08-08 hunter probe | GAP-008: timeout returned 503 text/plain (protocol requires JSON ErrorResponse); `ErrHarnessTimeout` defined but unused | Grep for defined-but-unused error codes — they mark unimplemented contract paths. Fixed: custom timeout writer, 504 JSON. **The docs were never updated → GAP-DOG-001** |
 | 2026-08-08 hunter probe | GAP-009: `cancelled_decision_id` hardcoded `""`; `current_decision*` never populated | Battery passes on key presence, not value semantics |
@@ -214,11 +215,12 @@ covered text/tool_call/wait paths; this one built the first consumer that
 drives **llm_call rounds** (a 2-model deliberation harness) and the first
 **concurrency probe** — and both legs produced new knowledge.
 
-**How gen-types actually works (why protocol/types.go exists):** the
-`//go:generate` line in types.go points at `cmd/gen-types`, which today only
-JSON-validates the 15 schema files and exits 0 — types.go is maintained by
-hand (GAP-045). Treat the schemas as the contract reference and types.go as
-the implementation; do not expect `go generate` to sync them yet.
+**How gen-types works (GAP-045):** the `//go:generate` line in types.go
+points at `cmd/gen-types`, which validates the 15 schema files and exits 0.
+It is not a code generator: types.go is maintained by hand against the
+schemas. Treat the schemas as the contract reference and types.go as the
+implementation; `go generate` checks the schema inputs but does not rewrite
+types.go.
 
 **The same-session race (GAP-043, new P1):** the harness stores sessions in an
 in-memory map guarded at the map level, but `resultHandler` mutates session
