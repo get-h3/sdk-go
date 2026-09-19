@@ -1,4 +1,19 @@
 
+## Dogfood Findings (2026-09-18)
+
+Verdict: SHIPPABLE (4th consecutive) — first real-work consumer: `sentry`, a repo-triage harness on published v0.1.6 that drives a real `tool_call` → `tool_result` → `end` loop through a scripted Hermes (real `git log`, real file stats) and writes a real `TRIAGE-REPORT.md`. Battery 46/46 against it (0.66s). Clean-room install on Go 1.22.12 (documented minimum): clone → `go build ./...` → `make all` → `make test` = 20s, all green, README curl quickstart reproduced verbatim, `go list -m all` = module only (zero-deps claim verified). t2fs ~25s from empty dir to a live conformant harness.
+
+- [P2] GAP-048: `POST /v1/cancel` validates nothing — missing `session_id` (valid JSON) → `404 SESSION_NOT_FOUND "session not found: "` instead of `400 INVALID_REQUEST`; out-of-enum `reason` accepted (200). Sibling endpoints 400 correctly; api-reference §2/§6 has no cancel error row.
+- [P2] GAP-049: `POST /v1/result` is uncorrelated and non-idempotent — any `decision_id` accepted (invented ids drive the loop) and re-delivering one id calls `OnResult` again (measured: two identical `file_stats` tool_calls from one repeated result). Double side effects for any side-effecting consumer; docs silent. Note for clients: omitting `result.success` decodes as `false` (our third probe took the EndError path purely for that reason).
+- [P2] GAP-050: health fields the docs promise are never filled by the SDK — `uptime_seconds` (api-reference §2 sample, integration-guide §8 LB advice) is absent from a live `GET /v1/health`; grep `harness/` shows no reference. `active_sessions` only exists if the harness sets it.
+- [P3] GAP-051: session status semantics undocumented and `expired` unreachable — `completed` only after an `end` decision; a turn ending `text.finished=true` stays `active` indefinitely; no TTL. Monitoring per §8 cannot tell finished from abandoned.
+- [P2] GAP-052 (infra): SKIPPED-install-bunker, now root-caused. 09-05's DNS blocker is resolved (github.com resolves from the box); the blocker is the spawn deadline: CLI gives up at ~45s while the rootless-docker install needs 60–90s → server `signal: killed` mid-install → `rollback userdel failed: context canceled` → every failed spawn leaks a `bunker-*` user (16 accumulated on las-bunker-03, two from today). No timeout flag in CLI 0.1.3. Substitute clean-room container install used for the installability evidence (labelled as substitute).
+- [P3] GAP-053: `make verify-counts` false-greens in a fresh clone — `battery parity skipped (no ../shim/scripts/test-count.txt)` then `PASS`; the parity half of the guard does not run exactly where CI/fresh consumers run it.
+- [P3] GAP-054: api-reference omits the Go const identifiers (`ResultTool`/`ResultTextSent`/`RoleUser`/`SessionStatus`/`HealthStatus`) — writing the `OnResult` switch required grepping `protocol/types.go`.
+- Still-open repeats (evidence, not new rows): GAP-041 (api-reference §2/§6 still say `message.role` "non-empty"; reality is `"must be user"`) and the five 09-01 dogfood P2s — QA-H3-SDK-GO-FOREMAN-5 already flags the pending-row accumulation.
+
+Left behind: `docs/dogfood/2026-09-18-integration.md` (full report + working recipes), `docs/dogfood/diagnostics.md` §8 (server internals, why results are uncorrelated, session lifecycle table, install-leg mechanics), `skills/h3-sdk-go-usage/SKILL.md` v1.0.5 (tool_call round-trip recipe + 6 new traps + corrections to 3 stale bullets: GAP-040 shipped, GAP-043 fixed, const-name gap).
+
 ## Dogfood Findings (2026-09-05)
 
 Verdict: SHIPPABLE (3rd consecutive) — first llm_call consumer workflow + first concurrency probe. Consumer: 2-model deliberation harness on published v0.1.5; battery 45/45; scripted-Hermes loop WORKFLOW_OK; 6 parallel clients clean with unique sessions.

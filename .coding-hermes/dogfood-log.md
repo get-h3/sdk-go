@@ -93,3 +93,31 @@ promise tested, top findings, and time-to-first-success.
   SKILL.md v1.0.3 (async-pattern recipe + updated traps), board GAP-038..042.
 - **Foreman:** cooldown 259200s — woken to 900 after filing work.
 2026-09-05 | SHIPPABLE | ~5min t2fs | friction 4 | GAP-043..047 + SKIPPED-install-bunker | battery 45/45 | consumer=llm deliberation on published v0.1.5 | same-session race found (P1)
+
+## 2026-09-18 — SHIPPABLE (real-work tool_call consumer + clean-room install leg)
+
+2026-09-18 | SHIPPABLE | install_seconds=20 | bunker=las-bunker-03 spawn FAILED (GAP-052) → clean-room container golang:1.22-bookworm substitute | smoke=ok | t2fs ~25s | friction 6 | GAP-048..054
+
+- **Verdict:** ✅ SHIPPABLE (4th consecutive)
+- **Promise tested:** a consumer can do *real work* through the documented
+  `tool_call` round trip (Hermes executes the tool, returns the result, the
+  harness produces an artifact) on the currently published module `v0.1.6`,
+  and a fresh user can install from the docs.
+- **What was done:** consumer `sentry` in /tmp/dogfood-h3-2026-09-18/consumer
+  (published module, no replace): `triage <path>` → `tool_call git_log` →
+  `tool_call file_stats` → writes `TRIAGE-REPORT.md` → `end`, driven by
+  `hermes-sim` (real `git log`, real `find|du`). Battery 46/46 on it (0.66s).
+  Lifecycle + error probes: cancel in-flight / unknown / missing-session_id /
+  bad reason, DELETE→GET, text-finished session status, duplicate + invented
+  `decision_id` results, health shape, `role:"system"`.
+- **Time-to-first-success:** ~25s (0.4s module fetch → 2.2s build → health 200
+  on the first poll).
+- **Friction count:** 6 (4 of them are board rows).
+- **Top findings:** GAP-049 uncorrelated/non-idempotent `/v1/result` (double
+  side effects); GAP-048 `/v1/cancel` missing session_id → 404 instead of 400;
+  GAP-050 documented health fields never populated; GAP-052 bunker spawn
+  deadline < rootless-docker install → leaked users (16 on the box).
+- **Left behind:** docs/dogfood/2026-09-18-integration.md,
+  docs/dogfood/diagnostics.md §8, skills/h3-sdk-go-usage/SKILL.md v1.0.5,
+  board GAP-048..054.
+- **Foreman:** NOT woken and cooldown NOT touched (fleet law: 21600s minimum).

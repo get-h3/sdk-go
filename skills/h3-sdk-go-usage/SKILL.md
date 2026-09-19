@@ -6,7 +6,7 @@ description: >-
   unit-test with testbed, and avoid the known contract/observability traps.
   Load this skill when working in this repo or building any harness with
   github.com/get-h3/sdk-go.
-version: 1.0.4
+version: 1.0.5
 category: software-development
 ---
 
@@ -29,15 +29,18 @@ side. A harness = 5 methods + an HTTP server + a passing `h3-test` battery.
 ## Run commands
 
 ```bash
-# Consumer scaffold (offline-friendly; SDK has zero deps)
+# Published module (preferred — verified 2026-09-18: v0.1.6 resolves in ~0.4s,
+# consumer built from it in 2.2s and passed 46/46)
 go mod init my-harness
-go mod edit -replace github.com/get-h3/sdk-go=/path/to/sdk-go
-go get github.com/get-h3/sdk-go
+go get github.com/get-h3/sdk-go@v0.1.6
 go run main.go                 # serves :9191
+
+# Offline/sibling-checkout variant (integration-guide §3)
+go mod edit -replace github.com/get-h3/sdk-go=/path/to/sdk-go && go get github.com/get-h3/sdk-go
 
 # Verify
 h3-test --endpoint http://localhost:9191   # exit 0 = compliant
-go test ./... -count=1                     # repo suite, ~0.5s
+go test ./... -count=1                     # repo suite (130 tests), ~3s
 ```
 
 ## The right way (proven patterns)
@@ -123,17 +126,83 @@ State rules that make it pass: keep `map[sessionID][]answer` AND
 struct a **constructor** — the README `&EchoHarness{}` zero-value pattern
 panics (`assignment to entry in nil map`) the moment you add state maps.
 
-## Known traps (verified 2026-09-05 — do not get bitten)
+## The tool_call round-trip recipe (live-verified 2026-09-18, published v0.1.6)
 
-- **Same-session concurrency races INSIDE the SDK (GAP-043).** Concurrent
-  requests hitting ONE session — result POSTs vs session-status GETs — race on
-  session fields (`harness.go` resultHandler writes vs getSessionHandler
-  reads; `go build -race` fires). Distinct sessions are clean (6/6 parallel
-  clients, 0 races). Until fixed: never share a session id across concurrent
-  clients/retries; make session ids globally unique.
+`tool_call` has no shipped example either (GAP-046). A real consumer whose tools
+touch the filesystem, passes the full battery (46/46) and writes a real artifact
+— full source in `docs/dogfood/2026-09-18-integration.md`. The loop:
+
+```go
+// OnProcess — branch on the tools the request ADVERTISED (contract), then ask
+// for one. Params is `any`: send the JSON shape your tool expects.
+if !hasTool(req.Context.Tools, "git_log") { /* text fallback, never tool_call */ }
+return &protocol.Decision{Decision: protocol.DecisionToolCall, History: hist,
+    ToolCall: &protocol.ToolCall{Name: "git_log",
+        Params: map[string]any{"path": target, "limit": 5},
+        Reasoning: "triage step 1: read recent history"}}, nil
+
+// OnResult — switch on the tool that just ran. Read the payload from
+// req.Result.Data (map[string]any after JSON round trip), always check
+// req.Result.Success, and end with EndError on failure.
+switch req.Result.ToolName {
+case "git_log":
+    return toolCall(hist, "file_stats", map[string]any{"path": target}, "…"), nil
+case "file_stats":
+    os.WriteFile(target+"/REPORT.md", []byte(report), 0o644)   // real side effect
+    return end(...EndTaskComplete, "report written"), nil
+}
+```
+
+Client side (what the body must send back): `result.type: "tool_result"`,
+`result.tool_name` **echoing the tool that was called**, `result.data` = whatever
+your tool produced, `result.success`, `result.duration_ms`. Omitting `success`
+decodes as `false` — a harness that trusts it will take its error path.
+
+**Do your own correlation if your tools have side effects.** `/v1/result` does
+not check that `decision_id` matches the in-flight decision, and a duplicate
+delivery re-invokes `OnResult` (GAP-049) — so a retry can run your tool step
+twice. Track the last decision id per session and ignore repeats.
+
+## Known traps (verified 2026-09-05 and 2026-09-18 — do not get bitten)
+
+- **`/v1/result` is uncorrelated and not idempotent (GAP-049, 2026-09-18).** Any
+  `decision_id` is accepted (a made-up one still drives the loop), and sending
+  the same `decision_id` twice calls `OnResult` twice — verified: two identical
+  `tool_call`s emitted from one repeated `tool_result`. Guard in your harness if
+  your handler has side effects.
+- **`/v1/cancel` does not validate its body like the other endpoints (GAP-048,
+  2026-09-18).** `{"reason":"system"}` with no `session_id` returns
+  `404 SESSION_NOT_FOUND "session not found: "` (not `400 INVALID_REQUEST`), and
+  an out-of-enum `reason` is accepted with `200`. Malformed JSON still 400s.
+  Don't read that 404 as "the session vanished" — check your own request first.
+- **Health fields are the harness's job, not the SDK's (GAP-050, 2026-09-18).**
+  `uptime_seconds` is never filled by `NewHTTPServer` (grep the package: the
+  field does not appear), and `active_sessions` only exists if your `Health()`
+  sets it — although `docs/api-reference.md` §2 shows both and
+  `integration-guide.md` §8 tells operators to wire them to an LB. Fill them
+  yourself (count your own sessions) or don't promise them.
+- **Session status has three reachable values, not four (GAP-051, 2026-09-18).**
+  `active` on create/result, `cancelled` via `/v1/cancel`, `completed` **only
+  after an `end` decision**. A turn that ends with `text.finished=true` leaves
+  the session `active` forever, and `expired` is unreachable (no TTL). Monitoring
+  must not treat `active` as "in flight".
+- **`make verify-counts` false-greens outside the monorepo checkout (GAP-053,
+  2026-09-18).** In a fresh clone it prints
+  `no shim canonical count at ../shim/scripts/test-count.txt; battery parity skipped`
+  and still exits 0 — the battery-parity half of the guard does not run.
+- **Const identifiers are not in the API reference (GAP-054, 2026-09-18).** The
+  reference documents JSON strings (`"tool_result"`, `"text_sent"`, `"user"`) but
+  not the Go names — `protocol.ResultTool` / `ResultTextSent` / `RoleUser` /
+  `SessionStatus` come from `protocol/types.go`. Expect one grep when you write
+  an `OnResult` switch.
+- **Same-session concurrency race (GAP-043) — FIXED, do not code around it.**
+  It was real in v0.1.5 (result POSTs vs session-status GETs on one session);
+  closed 2026-09-18 (commit `f6fd890`), current on v0.1.6. Old advice "make every
+  session id unique" is obsolete; unique ids remain good practice, not a fix.
 - **Three battery contracts are documented only in the battery itself
   (GAP-044):** (1) `context.models=[]` → returning `llm_call` FAILS test 5_8
-  ("hallucinated model"); (2) "do not finish" in the message = streaming mode →
+  ("hallucinated model") — `context.tools=[]` is the same rule for `tool_call`;
+  (2) "do not finish" in the message = streaming mode →
   `text.finished=false`, and the next result must flip to `finished=true`;
   (3) `Decision.history` must NEVER shrink — seed once from context, append
   every user turn, attach the snapshot to every decision (result-driven ones
@@ -176,8 +245,9 @@ panics (`assignment to entry in nil map`) the moment you add state maps.
   no history injection (GAP-039) — drive OnProcess raw for that.
 - **Required request fields trip raw curls**: `identity.platform` and
   `identity.chat_id` are mandatory alongside `session_id` + `message.role`.
-  Copy a full body from `docs/api-reference.md` §2 (README/quickstart curl
-  examples still missing — GAP-040).
+  Copy a full body from `docs/api-reference.md` §2 or the README quickstart —
+  the README/quickstart curl sequence now exists and is verified verbatim
+  (GAP-040 shipped; this bullet used to say those examples were missing).
 - Strays in the repo (`.vfs/.dirty`, `dagger.db`, `gen-types`, `echo`,
   `minimal`, `h3-consensus-adapter` binaries) are intentional leftovers —
   leave them untracked.
@@ -187,7 +257,13 @@ panics (`assignment to entry in nil map`) the moment you add state maps.
 1. `h3-test` → 46/46.
 2. curl full loop: process (tool_call) → result (tool_result) → result
    (text_sent) → end; confirm history grows, never shrinks.
-3. curl error paths: malformed JSON (400), missing session_id (400), unknown
-   session GET/DELETE/cancel/result (404), hang >30s (504 JSON
-   HARNESS_TIMEOUT), DELETE then GET (404).
+3. curl error paths: malformed JSON (400), missing session_id on `/v1/process`
+   (400 — but on `/v1/cancel` it 404s, see traps), unknown session GET/DELETE/
+   result (404), hang >30s (504 JSON HARNESS_TIMEOUT), DELETE then GET (404).
 4. `go vet ./...`, `go test ./...` clean.
+5. Installability from zero: clean container/box, `git clone` (anonymous, public
+   repo) → `go build ./...` → `make all` → `make test` → run an example →
+   battery. Measured 2026-09-18 on Go 1.22.12 (the documented minimum): **20s**,
+   all green. Note: inside the `golang:*` image, use `bash -c` with
+   `/usr/local/go/bin` on PATH — a login shell (`bash -lc`) drops it and
+   `make all` dies at `gofmt` with Error 127.

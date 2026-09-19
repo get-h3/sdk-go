@@ -253,3 +253,99 @@ external DNS (get.docker.com and github.com unresolvable from the box; two
 spawns died at rootless-docker install). Substitute proof: cold-cache
 `go get @v0.1.5` = 2s, zero deps, consumer built and passed 45/45 from it (count-ok-historical: the 2026-09-05 cold-cache run, battery 45 then).
 Boarded as SKIPPED-install-bunker with the infra signature.
+
+## 8. Dogfood run 2026-09-18 (published v0.1.6; first real-work tool_call consumer + clean-room install)
+
+**Verdict: SHIPPABLE.** Consumer `sentry` (repo triage: `tool_call git_log` →
+`tool_result` → `tool_call file_stats` → `tool_result` → writes
+`TRIAGE-REPORT.md` → `end`) driven by a scripted Hermes that really shells out;
+battery **46/46** against it; clean-room install on Go 1.22.12 in **20s**;
+README curl quickstart reproduced verbatim. Full report:
+[`2026-09-18-integration.md`](2026-09-18-integration.md).
+
+### How the server is built (the part that explains today's findings)
+
+`harness.NewHTTPServer(h)` is four pieces over one `sessionStore` (a
+`map[string]*sessionEntry` behind a mutex, `harness/harness.go:39-113`):
+
+1. **Routing** — Go 1.22 patterns, six handlers (`healthHandler`,
+   `processHandler`, `resultHandler`, `cancelHandler`, `getSessionHandler`,
+   `deleteSessionHandler`), plus a `notFoundInterceptor` that converts the
+   mux's plain-text 404/405 into JSON `ErrorResponse`.
+2. **Validation** — only `processHandler` calls `ProcessRequest.Validate()`
+   (session_id, `message.role == "user"`, identity.platform, identity.chat_id).
+   `decision.Validate()` runs on the way *out* (`INVALID_DECISION` 500).
+   **`cancelHandler` validates nothing** — it looks the session up straight
+   away, which is why a body with no `session_id` answers `404 … "not found: "`
+   (GAP-048) instead of the 400 its sibling returns.
+3. **Session bookkeeping** — create on process, `LastActive`/`TurnCount` bump on
+   result, `status` transitions: `active` → `cancelled` (cancel path) or
+   `completed` (only when the returned decision is `end`). Nothing sets
+   `expired` and nothing times sessions out (GAP-051).
+4. **Middleware** — logging (`slog`), panic recovery (JSON 500, process keeps
+   serving), and a fixed 30s timeout writer (`HARNESS_TIMEOUT` 504).
+
+`Health()` is passed through **as the harness wrote it**: the server merges
+nothing, so `uptime_seconds` (documented in api-reference §2 and named in
+integration-guide §8's LB advice) is absent unless the harness fills it — and
+the SDK never suggests it should (GAP-050).
+
+### Why `/v1/result` accepting anything matters (GAP-049)
+
+`resultHandler` takes `session_id` + `decision_id`, does a store lookup on the
+*session*, and calls `OnResult` — it never compares `decision_id` to the
+decision it last handed out. Two consequences, both measured today:
+
+```text
+# same decision_id delivered twice → OnResult twice → two tool_calls
+POST /v1/result {decision_id: da90c0e6…, result:{type:tool_result, tool_name:git_log}} → {"decision":"tool_call","tool_call":{"name":"file_stats",…}}
+POST /v1/result {decision_id: da90c0e6…, result:{…same id again…}}                  → {"decision":"tool_call","tool_call":{"name":"file_stats",…}}   ← second run
+
+# invented decision_id → still drives the loop
+POST /v1/result {decision_id:"totally-made-up-id", result:{type:tool_result, tool_name:file_stats}}
+   → {"decision":"end","end":{"reason":"error","summary":"triage aborted: file_stats failed: …"}}
+```
+
+**Right way for a side-effecting consumer:** keep `lastDecisionID` per session;
+ignore a `result` whose id you did not just emit; make the tool step itself
+idempotent (write-then-rename, or key artifacts by decision id). The battery
+does not test this, and the docs do not mention it — treat it as a harness-level
+invariant, the same way the three decision contracts are.
+
+**Client-side trap proved today:** omitting `result.success` decodes as `false`.
+The third probe above ends with `EndError` purely because `success` was absent —
+a harness that trusts the boolean will report failure for a successful call.
+
+### Session lifecycle, as observed
+
+| Sequence | Observed |
+|---|---|
+| process → tool_call, then `/v1/cancel` | `{"cancelled":true,"cancelled_decision_id":"33cadd90-…"}`; session `status:cancelled`, `current_decision_type:tool_call` |
+| process(text-only, `finished=true`), no result | session stays `status:active` — indefinitely; `completed` requires an `end` decision |
+| process → result → result → `end` | `status:completed`, `turn_count:3` |
+| `DELETE` then `GET` | `{"terminated":true}` then `404 SESSION_NOT_FOUND` |
+
+### Install leg: bunker blocker root-caused; clean-room substitute green
+
+The 09-05 blocker is gone (DNS on `las-bunker-03` resolves again, `bunkerd`
+active) — and replaced by a different one, now proven from the box's own
+journal: `bunker spawn` gives up at ~45s (`deadline_exceeded`), while the
+rootless-docker install needs 60–90s; the server cancels the spawn context
+mid-install (`signal: killed`) and its `userdel` rollback then fails
+(`context canceled`), **leaking a `bunker-*` user per failed spawn** — 16
+accumulated on the box, two from today. There is no spawn-timeout flag in CLI
+0.1.3. Boarded as GAP-052 (infra).
+
+Substitute (labelled as such — not the bunker path): `golang:1.22-bookworm`,
+empty filesystem, **only documented commands** — anonymous `git clone` of the
+documented URL (`2bda31c`), `go build ./...` (8.4s), `make all` (verify-counts ·
+fmt · vet · build · test-short), `make test` (130 tests green),
+`go list -m all` → the module alone, **no `go.sum`** (the "zero external
+dependencies" claim, verified), then `examples/echo` on :9191 and the README
+curl sequence reproduced verbatim, battery 46/46 (0.22s). **INSTALL_SECONDS=20.**
+
+**Environment artifact, not a project defect:** `docker exec … bash -lc` inside
+the official Go image drops `/usr/local/go/bin` from `PATH`, so `go build` is
+"command not found" and `make all` dies at `gofmt` (Error 127). Recorded here so
+the next agent does not mistake it for a broken Makefile.
+
