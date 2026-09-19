@@ -339,7 +339,7 @@ accumulated on the box, two from today. There is no spawn-timeout flag in CLI
 Substitute (labelled as such — not the bunker path): `golang:1.22-bookworm`,
 empty filesystem, **only documented commands** — anonymous `git clone` of the
 documented URL (`2bda31c`), `go build ./...` (8.4s), `make all` (verify-counts ·
-fmt · vet · build · test-short), `make test` (130 tests green),
+fmt · vet · build · test-short), `make test` (130 tests green at `2bda31c` — count-ok-historical),
 `go list -m all` → the module alone, **no `go.sum`** (the "zero external
 dependencies" claim, verified), then `examples/echo` on :9191 and the README
 curl sequence reproduced verbatim, battery 46/46 (0.22s). **INSTALL_SECONDS=20.**

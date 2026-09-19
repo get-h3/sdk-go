@@ -481,6 +481,119 @@ func TestCancelUnknownSession(t *testing.T) {
 	}
 }
 
+// TestCancelEndpoint_MissingSessionID verifies GAP-048: a well-formed JSON body
+// with no session_id is a MALFORMED cancel — 400 INVALID_REQUEST — and must not
+// be reported as 404 SESSION_NOT_FOUND (which named an empty session and read to
+// a consumer as a session that had vanished).
+func TestCancelEndpoint_MissingSessionID(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/v1/cancel", "application/json",
+		strings.NewReader(`{"reason": "system"}`))
+	if err != nil {
+		t.Fatalf("POST /v1/cancel: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrInvalidRequest {
+		t.Errorf("expected ErrInvalidRequest, got %q", errResp.Error.Code)
+	}
+	if errResp.Error.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+	if m.cancelCalled {
+		t.Error("OnCancel must NOT be called for a malformed cancel")
+	}
+}
+
+// TestCancelEndpoint_UnknownReasonOnLiveSession verifies GAP-048 on a live
+// session: a reason outside the enum is rejected with 400 INVALID_REQUEST
+// instead of being accepted and mutating the session. The reject must happen
+// before the store lookup, so the session is left untouched (still active).
+func TestCancelEndpoint_UnknownReasonOnLiveSession(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	postProcess(t, ts, "sess-gap048-reason")
+
+	resp, err := http.Post(ts.URL+"/v1/cancel", "application/json",
+		strings.NewReader(`{"session_id": "sess-gap048-reason", "reason": "nonsense_reason"}`))
+	if err != nil {
+		t.Fatalf("POST /v1/cancel: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+
+	var errResp protocol.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrInvalidRequest {
+		t.Errorf("expected ErrInvalidRequest, got %q", errResp.Error.Code)
+	}
+	if m.cancelCalled {
+		t.Error("OnCancel must NOT be called when the cancel request is invalid")
+	}
+
+	// The session must be untouched by a rejected cancel.
+	if sr := getSession(t, ts, "sess-gap048-reason"); sr.Status == protocol.SessionCancelled {
+		t.Errorf("rejected cancel must not cancel the session, got status %q", sr.Status)
+	}
+}
+
+// TestCancelEndpoint_ValidCancelStillOK pins GAP-048's hard constraint: the wire
+// contract for a VALID cancel is unchanged — 200 {"cancelled": true, ...} and
+// OnCancel is called with the decoded request.
+func TestCancelEndpoint_ValidCancelStillOK(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	postProcess(t, ts, "sess-gap048-ok")
+
+	resp, err := http.Post(ts.URL+"/v1/cancel", "application/json",
+		strings.NewReader(`{"session_id": "sess-gap048-ok", "reason": "user_interrupt"}`))
+	if err != nil {
+		t.Fatalf("POST /v1/cancel: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var cr protocol.CancelResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		t.Fatalf("decode cancel response: %v", err)
+	}
+	if !cr.Cancelled {
+		t.Errorf("expected cancelled=true, got %v", cr.Cancelled)
+	}
+	if !m.cancelCalled {
+		t.Error("OnCancel was not called for a valid cancel")
+	}
+	if m.lastCancelReq == nil || m.lastCancelReq.SessionID != "sess-gap048-ok" {
+		t.Errorf("OnCancel received unexpected request: %+v", m.lastCancelReq)
+	}
+}
+
 func TestResultUnknownSession(t *testing.T) {
 	m := newMockHarness()
 	srv := NewHTTPServer(m)

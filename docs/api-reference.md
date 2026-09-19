@@ -160,6 +160,18 @@ Request:
 
 `reason` ∈ `user_interrupt` | `timeout` | `system`.
 
+Both fields are required: `session_id` must be non-empty and `reason` must be
+one of the three values above. A request that fails this check is rejected with
+`400 INVALID_REQUEST` **before** the session store is consulted, so a malformed
+cancel is never misreported as a vanished session:
+
+```json
+{"error": {"code": "INVALID_REQUEST", "message": "session_id is required"}}
+```
+
+`404 SESSION_NOT_FOUND` is reserved for a **valid** cancel naming a session the
+harness does not have.
+
 Response `200` — **corrected contract (GAP-003)**:
 
 ```json
@@ -692,10 +704,10 @@ type ErrorResponse struct {
 
 | Code | Emitted by the SDK server | Meaning |
 |---|---|---|
-| `INVALID_REQUEST` | `400` on `/v1/process` (and any decode failure) | Malformed JSON or missing required field (`session_id`, `message.role`, `identity.platform`, `identity.chat_id`) |
+| `INVALID_REQUEST` | `400` on `/v1/process` and `/v1/cancel` (and any decode failure) | Malformed JSON or missing required field. `/v1/process`: `session_id`, `message.role`, `identity.platform`, `identity.chat_id`. `/v1/cancel`: `session_id`, or `reason` outside `user_interrupt` \| `timeout` \| `system` |
 | `INVALID_DECISION` | `500` after `OnProcess`/`OnResult` | Decision failed `Validate()` — missing payload for its type |
 | `INTERNAL_ERROR` | `500` | Your method returned a non-nil error |
-| `SESSION_NOT_FOUND` | `404` on `GET`/`DELETE /v1/sessions/{id}` | No session with that id in the store |
+| `SESSION_NOT_FOUND` | `404` on `GET`/`DELETE /v1/sessions/{id}` and on `POST /v1/cancel` with a **valid** body naming an unknown session | No session with that id in the store |
 | `UNKNOWN_TOOL` / `UNKNOWN_MODEL` / `SESSION_EXPIRED` | — (defined for protocol completeness) | Return these from your own `ErrorResponse` if you build a custom server; the SDK server does not emit them |
 | `HARNESS_TIMEOUT` | `504` (middleware timeout) | Harness method exceeded the 30s server timeout; emitted by the SDK server |
 
@@ -707,6 +719,7 @@ type ErrorResponse struct {
 
 ```go
 func (r *ProcessRequest) Validate() error   // required: session_id, message.role, identity.platform, identity.chat_id
+func (r *CancelRequest) Validate() error    // required: session_id, reason ∈ the CancelReason enum
 func (d *Decision) Validate() error         // decision_id + payload per type (see §4)
 
 type ValidationError struct {

@@ -46,6 +46,23 @@ func (r *ProcessRequest) Validate() error {
 	return nil
 }
 
+// Validate checks that a CancelRequest is well-formed.
+// Required fields: session_id, and reason must be one of the CancelReason
+// values. A cancel that fails this check must never reach the session store:
+// an empty session_id would otherwise surface as a 404 "session not found: "
+// with an empty name, i.e. a malformed request reading as a vanished session.
+func (r *CancelRequest) Validate() error {
+	if r.SessionID == "" {
+		return newValidationError(ErrInvalidRequest, "session_id", "session_id is required")
+	}
+	switch r.Reason {
+	case CancelUserInterrupt, CancelTimeout, CancelSystem:
+	default:
+		return newValidationError(ErrInvalidRequest, "reason", "reason must be one of user_interrupt, timeout, system")
+	}
+	return nil
+}
+
 // Validate checks that a Decision is well-formed.
 func (d *Decision) Validate() error {
 	if d.DecisionID == "" {

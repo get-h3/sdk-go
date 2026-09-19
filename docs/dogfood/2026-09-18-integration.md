@@ -1,5 +1,8 @@
 # H3 Go SDK — Dogfood Integration Report (2026-09-18)
 
+> **Historical (2026-09-18):** point-in-time record — the counts below were
+> correct when written and are not live status.
+
 **Verdict: ✅ SHIPPABLE** (4th consecutive) — first dogfood run driven by a consumer
 harness that does **real work with real side effects through a real `tool_call`
 round trip**, on the currently published module (`v0.1.6`), plus the first

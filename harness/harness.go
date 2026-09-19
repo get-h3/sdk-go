@@ -359,6 +359,14 @@ func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GAP-048: validate BEFORE the session lookup — a malformed cancel must
+	// surface as 400 INVALID_REQUEST, never as a 404 SESSION_NOT_FOUND with an
+	// empty session name (which reads to a consumer as a vanished session).
+	if err := req.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, err.Error())
+		return
+	}
+
 	if s.sessions.get(req.SessionID) == nil {
 		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
 			"session not found: "+req.SessionID)

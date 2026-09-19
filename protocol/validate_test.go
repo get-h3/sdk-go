@@ -341,3 +341,80 @@ func TestNewDecision_ValidateWithoutPayload_BecauseDecisionIDIsSet(t *testing.T)
 		t.Errorf("fully-populated NewDecision should validate: %v", err)
 	}
 }
+
+// TestCancelRequestValidate_MissingSessionID verifies GAP-048: a cancel with no
+// session_id is rejected as INVALID_REQUEST naming the field, instead of
+// reaching the session store and surfacing as `404 SESSION_NOT_FOUND` with an
+// empty session name (which reads to a consumer as a session that vanished).
+func TestCancelRequestValidate_MissingSessionID(t *testing.T) {
+	r := CancelRequest{Reason: CancelSystem}
+	err := r.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing session_id, got nil")
+	}
+
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != ErrInvalidRequest {
+		t.Errorf("Code = %q, want %q", ve.Code, ErrInvalidRequest)
+	}
+	if field, ok := ve.Details["field"]; !ok || field != "session_id" {
+		t.Errorf("Details[field] = %v, want \"session_id\"", field)
+	}
+}
+
+// TestCancelRequestValidate_UnknownReason verifies that a reason outside the
+// protocol enum (cancel-request.json: user_interrupt | timeout | system) is
+// rejected as INVALID_REQUEST rather than silently accepted.
+func TestCancelRequestValidate_UnknownReason(t *testing.T) {
+	r := CancelRequest{SessionID: "sess-001", Reason: CancelReason("nonsense_reason")}
+	err := r.Validate()
+	if err == nil {
+		t.Fatal("expected error for out-of-enum reason, got nil")
+	}
+
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != ErrInvalidRequest {
+		t.Errorf("Code = %q, want %q", ve.Code, ErrInvalidRequest)
+	}
+	if field, ok := ve.Details["field"]; !ok || field != "reason" {
+		t.Errorf("Details[field] = %v, want \"reason\"", field)
+	}
+}
+
+// TestCancelRequestValidate_MissingReason verifies that a missing reason is
+// rejected too: the JSON Schema marks `reason` required, so an absent reason
+// decodes to "" — outside the enum — and is not a valid cancel.
+func TestCancelRequestValidate_MissingReason(t *testing.T) {
+	r := CancelRequest{SessionID: "sess-001"}
+	err := r.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing reason, got nil")
+	}
+
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != ErrInvalidRequest {
+		t.Errorf("Code = %q, want %q", ve.Code, ErrInvalidRequest)
+	}
+	if field, ok := ve.Details["field"]; !ok || field != "reason" {
+		t.Errorf("Details[field] = %v, want \"reason\"", field)
+	}
+}
+
+// TestCancelRequestValidate_ValidReasons verifies every enum value passes.
+func TestCancelRequestValidate_ValidReasons(t *testing.T) {
+	for _, reason := range []CancelReason{CancelUserInterrupt, CancelTimeout, CancelSystem} {
+		r := CancelRequest{SessionID: "sess-001", Reason: reason}
+		if err := r.Validate(); err != nil {
+			t.Errorf("reason %q: expected nil error, got %v", reason, err)
+		}
+	}
+}
