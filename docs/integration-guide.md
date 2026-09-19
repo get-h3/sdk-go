@@ -209,12 +209,112 @@ the full HTTP contract for every decision type and error code.
 Three rules keep you compliant:
 
 1. **Never shrink history.** Echo `req.Context.History` back in every decision — the
-   battery asserts that conversation history never loses entries.
+   battery asserts that conversation history never loses entries. (See
+   [Decision contracts the battery enforces](#decision-contracts-the-battery-enforces)
+   for the seed → append → attach pattern.)
 2. **Every decision must carry its payload.** A `text` decision needs `Text` set, an
    `end` decision needs `End`, etc. (The server validates this and answers
    `500 INVALID_DECISION` otherwise.)
 3. **A decision without a `DecisionID` gets a generated UUIDv4** — you may omit it,
    but prefer `protocol.NewDecision(protocol.DecisionText)` which sets it for you.
+
+### Decision contracts the battery enforces
+
+Three decision-level contracts are checked by name. None of them is something the
+SDK can do for you: the server validates a decision's payload, not these
+properties, so they live or die in the decision you return.
+
+| Contract | Exercised as | What it means |
+|---|---|---|
+| No `llm_call` without a model | `no_models_available` (`no_tools_available` for tools) | `context.models == []` → never return `llm_call`; `LLMCall.Model` must be a model Hermes sent |
+| A stream must close | `process_text_finished_false` / `process_text_finished_true` | a message containing `"do not finish"` → `finished=false`; the next decision for that text → `finished=true` |
+| History never shrinks | `process_preserves_history` | seed from `req.Context.History`, append each turn, attach the snapshot to *every* decision |
+
+**1. An empty `context.models` forbids `llm_call`.** Hermes sends the models it can
+actually route in `context.models`, and `llm_call.model` has to name one of them.
+When that list is empty there is no model to name, so a decision that names one
+regardless is a fabricated model: the battery fails the run ("hallucinated model")
+and real Hermes would answer `UNKNOWN_MODEL`. Return a `text` decision saying no
+model is available (or `end` with `EndError`), and branch on the list you were
+sent — never on your own configuration. `context.tools == []` is the same rule for
+`tool_call`. Decide the streaming flag (contract 2) *before* this fallback: the
+battery sends its streaming prompt with `context.models: []`, and a fallback pinned
+to `finished=true` fails `process_text_finished_false`.
+
+```go
+// Decide the streaming flag FIRST (see 2 below): the battery's streaming prompt
+// arrives with context.models == [], so this fallback must not force
+// finished=true on it.
+streaming := strings.Contains(req.Message.Content, "do not finish")
+
+// No routable model this turn — say so; do not invent a model name.
+if len(req.Context.Models) == 0 {
+    return &protocol.Decision{
+        Decision: protocol.DecisionText,
+        History:  history, // (3) the same snapshot every decision carries
+        Text:     &protocol.TextResp{Content: "No model available in this session.", Finished: !streaming},
+    }, nil
+}
+```
+
+**2. `"do not finish"` is a streaming request — and the stream has to close.** The
+battery sends *"Just start a thought, do not finish it yet."* and expects
+`text.finished=false`. That flag means "partial text — come back to me with this
+text's result", so Hermes calls `OnResult` next; the decision you return **there**
+must flip `finished=true` (or be an `end`) or the session streams forever. The
+unfinished text is only step 1 of 2:
+
+| Step | Inbound | Return |
+|---|---|---|
+| 1 | `POST /v1/process` with `"do not finish"` in `message.content` | `text`, `finished=false` |
+| 2 | `POST /v1/result` for that decision (`result.type: text_sent`) | `text`, `finished=true` — or `end` |
+
+```go
+// Step 1 (OnProcess): open the stream only for a "do not finish" message.
+streaming := strings.Contains(req.Message.Content, "do not finish")
+return &protocol.Decision{
+    Decision: protocol.DecisionText,
+    History:  history,
+    Text:     &protocol.TextResp{Content: "Starting a thought…", Finished: !streaming},
+}, nil
+
+// Step 2 (OnResult): close it — this decision answers the unfinished text.
+return &protocol.Decision{
+    Decision: protocol.DecisionText,
+    History:  history,
+    Text:     &protocol.TextResp{Content: "Thought complete.", Finished: true},
+}, nil
+```
+
+**3. Attach the history snapshot to every decision.** `OnProcess` seeds per-session
+history once from `req.Context.History` and appends the incoming turn; `OnResult`
+receives no context at all (`ResultRequest` has no `context` field), so the
+snapshot has to come from state you kept. A `history` array that comes back shorter
+than the one you were sent — or absent, because `History` is `omitempty` — fails
+`process_preserves_history` with `history shrank`:
+
+```go
+h.mu.Lock()
+// Seed once from the context, then append this turn: history only grows.
+if h.sessions[sid] == nil {
+    h.sessions[sid] = append(h.sessions[sid], req.Context.History...)
+}
+h.sessions[sid] = append(h.sessions[sid], protocol.HistoryEntry{
+    Role: protocol.RoleUser, Content: req.Message.Content,
+})
+// Snapshot (a copy) for the decision — never alias the live slice.
+history := make([]protocol.HistoryEntry, len(h.sessions[sid]))
+copy(history, h.sessions[sid])
+h.mu.Unlock()
+```
+
+The reference for all three is [`testbed/conformance.go`](../testbed/conformance.go)
+— the harness the battery validates — and
+[api-reference §4 → Decision contracts the battery enforces](api-reference.md#decision-contracts-the-battery-enforces)
+has the same rules with a minimal complete harness. Note that the echo harness in
+§4 above satisfies (2) and (3) on the process side but deliberately holds its demo
+session in the stream; when your harness has to end, copy the flip from
+`testbed/conformance.go`.
 
 ## 5. Verify with the compliance battery
 
@@ -238,8 +338,9 @@ Expected output tail — all six categories green:
 
 Exit code `0` means compliant (exact banner/format may vary slightly between shim
 versions). If a category fails, see
-[Troubleshooting](#7-troubleshooting) — most failures are history shrinkage or a
-missing decision payload.
+[Troubleshooting](#7-troubleshooting) — most failures are one of the three
+[decision contracts](#decision-contracts-the-battery-enforces) or a missing
+decision payload.
 
 > The battery is **black-box**: it only speaks HTTP to your endpoint. The same
 > `h3-test` run works against harnesses built with any SDK.
@@ -291,7 +392,10 @@ Best practices:
 | Battery hangs on one test | Harness method blocked >30s | Server replies `504 JSON HARNESS_TIMEOUT` (`{"error":{"code":"HARNESS_TIMEOUT",...}}`); make the method return promptly or move work to a goroutine |
 | `400 INVALID_REQUEST` | Battery sends minimal requests | Don't require optional fields; only `session_id`, `message.role`, `identity.platform`, `identity.chat_id` are guaranteed |
 | `500 INVALID_DECISION` | Decision missing its payload | Every `text` decision needs `Text`; every `end` needs `End`; `text.content` must be non-empty |
-| History tests fail | History shrank | Echo `req.Context.History` back verbatim in every decision |
+| `no_models_available` fails | An `llm_call` was returned while `context.models` was empty | Branch on `len(req.Context.Models)` and answer with `text`/`end` instead of a model name — see [decision contracts](#decision-contracts-the-battery-enforces) |
+| `process_text_finished_false` fails | The `"do not finish"` prompt wasn't treated as a stream | Detect it with `strings.Contains(req.Message.Content, "do not finish")` and return `Finished: false` — see [decision contracts](#decision-contracts-the-battery-enforces) |
+| History tests fail | History shrank, or `history` was omitted on a result decision | Seed from `req.Context.History`, append each turn, attach the snapshot to every decision — see [decision contracts](#decision-contracts-the-battery-enforces) |
+| Stream never ends | `finished=false` returned for the rest of the session | Flip `finished=true` (or `end`) on the decision you return for the unfinished text's result |
 | `h3-test` not found | Shim not installed | `pip install git+https://github.com/get-h3/shim` |
 
 ## 8. Deployment notes

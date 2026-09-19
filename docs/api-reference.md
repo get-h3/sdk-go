@@ -43,6 +43,10 @@ Contract notes:
 - A nil `Health()` result is replaced by the server with an `ok` default.
 - Decision payloads are validated by the server; a decision without
   `decision_id` gets a generated UUIDv4.
+- Three decision-level contracts the SDK server does *not* enforce (empty
+  `context.models`, the streaming `finished` transition, non-shrinking
+  `history`) are in
+  [§4 → Decision contracts the battery enforces](#decision-contracts-the-battery-enforces).
 
 ### `NewHTTPServer`
 
@@ -331,6 +335,199 @@ func GenerateUUID() string
 
 Prefer `NewDecision` over literal construction so every decision carries a
 unique, traceable id.
+
+### Decision contracts the battery enforces
+
+Three properties of the decisions you return are contracts, not conveniences:
+`h3-test` exercises each one by name. Server validation (§7) does not cover them,
+the SDK cannot enforce them for you either — only the `Decision` you hand back
+carries or breaks them.
+
+#### a. An empty `context.models` forbids `llm_call`
+
+`LLMCall.Model` must name a model advertised in `context.models`; a name the
+runtime has no route for is `UNKNOWN_MODEL` (§6). So when `context.models == []`
+there is no model to name, and *any* `llm_call` is a fabricated one — the battery
+reports it as a "hallucinated model" and fails the run (`no_models_available`).
+`context.tools == []` is the same rule for `tool_call` (`no_tools_available`):
+never call a tool the request did not advertise.
+
+Return something honest instead — a `text` decision saying no model is available,
+or an `end` with `EndError`:
+
+```go
+// Not a streaming turn (contract b decides that first) and no routable model:
+// say so; do not invent a model name.
+if len(req.Context.Models) == 0 {
+    return &protocol.Decision{
+        Decision: protocol.DecisionText,
+        Text:     &protocol.TextResp{Content: "No model available in this session.", Finished: true},
+    }, nil
+}
+```
+
+Branch on the list you were *sent*, not on your own configuration: Hermes decides
+per request what is available.
+
+One ordering trap, and it bites on the first build: the battery's streaming prompt
+(contract b) arrives with `context.models: []`. A no-model fallback that hard-codes
+`finished=true` therefore answers that prompt `finished=true` and fails
+`process_text_finished_false` — decide the streaming flag (b) before this fallback,
+exactly as the minimal harness below does.
+
+#### b. `"do not finish"` requests streaming — and the stream must close
+
+`text.finished` is the streaming marker (`TextResp` above): `false` = "partial
+text, expect another decision for it", `true` = "turn complete".
+
+The battery sends the phrase **"do not finish"** (e.g. *"Just start a thought, do
+not finish it yet."*) and asserts the answer is `text` with `finished=false`
+(`process_text_finished_false`); a message asking for a final answer must come
+back `finished=true` (`process_text_finished_true`). The transition is two steps,
+and the unfinished text is only the first of them:
+
+| Step | Inbound | Your decision |
+|---|---|---|
+| 1 | `POST /v1/process` whose `message.content` contains `"do not finish"` | `text` with `finished=false` |
+| 2 | `POST /v1/result` for that decision (`result.type: text_sent`) | `text` with `finished=true` — or `end` |
+
+`finished=false` tells Hermes the text is partial, so it comes back with the
+result of that text instead of ending the turn. A stream that never flips never
+terminates. Close it on the follow-up decision rather than holding
+`finished=false` for the rest of the session — `testbed/conformance.go`, the
+harness the battery validates, does exactly that (`OnResult` returns
+`Finished: true`), and that is the copy to imitate. (`examples/echo` deliberately
+keeps one demo session in the stream and never closes it; don't copy that part
+into a session that has to end.)
+
+```go
+// OnProcess — step 1: decide whether this turn streams.
+streaming := strings.Contains(req.Message.Content, "do not finish")
+return &protocol.Decision{
+    Decision: protocol.DecisionText,
+    Text:     &protocol.TextResp{Content: "Starting a thought…", Finished: !streaming},
+}, nil
+
+// OnResult — step 2: the decision returned for an unfinished text must flip
+// finished to true, or Hermes keeps asking and the session never ends.
+return &protocol.Decision{
+    Decision: protocol.DecisionText,
+    Text:     &protocol.TextResp{Content: "Thought complete.", Finished: true},
+}, nil
+```
+
+#### c. `Decision.history` must never shrink
+
+The battery replays a populated `context.history` and fails any decision whose
+`history` is shorter than the history it was sent — including *absent*, because
+`History` is `omitempty` and an omitted field reads as empty
+(`process_preserves_history`: `history shrank: 4 -> 0`). Three habits satisfy it:
+
+1. **Seed** per-session history once from `req.Context.History`.
+2. **Append** every new turn (the incoming user message, and your own turn if you
+   model one) — history only grows.
+3. **Attach the snapshot to every decision you return**, including result-driven
+   ones. `ResultRequest` carries no `context` (§5), so a harness that attaches
+   history only from `OnProcess` has nothing to attach on a result turn.
+
+Keep history in your own session state and return a *copy*, so a later append
+cannot mutate a snapshot Hermes is still holding:
+
+```go
+// seed once, then append this turn
+s.history = append(s.history, protocol.HistoryEntry{Role: protocol.RoleUser, Content: req.Message.Content})
+
+// snapshot for the decision
+history := make([]protocol.HistoryEntry, len(s.history))
+copy(history, s.history)
+
+return &protocol.Decision{
+    Decision: protocol.DecisionText,
+    History:  history, // same snapshot on process AND result decisions
+    Text:     &protocol.TextResp{Content: "…", Finished: true},
+}, nil
+```
+
+#### Minimal harness honouring all three
+
+`testbed/conformance.go` implements the full pattern; this is the same shape,
+reduced to the three contracts.
+
+```go
+type MyHarness struct {
+    mu       sync.Mutex
+    sessions map[string][]protocol.HistoryEntry // session id → history snapshot
+}
+
+// The map must be non-nil before the first OnProcess/OnResult.
+func NewMyHarness() *MyHarness {
+    return &MyHarness{sessions: map[string][]protocol.HistoryEntry{}}
+}
+
+func (h *MyHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+    h.mu.Lock()
+    // (c) seed once from the context we were sent, append this turn, snapshot.
+    hist := h.sessions[req.SessionID]
+    if hist == nil {
+        hist = append(hist, req.Context.History...)
+    }
+    hist = append(hist, protocol.HistoryEntry{Role: protocol.RoleUser, Content: req.Message.Content})
+    h.sessions[req.SessionID] = hist
+    history := make([]protocol.HistoryEntry, len(hist))
+    copy(history, hist)
+    models := req.Context.Models
+    streaming := strings.Contains(req.Message.Content, "do not finish") // (b) step 1
+    h.mu.Unlock()
+
+    // (b) A streaming request stays unfinished, whatever else is true of it.
+    // The battery's streaming prompt arrives with an EMPTY model list, so this
+    // branch must come before the no-model fallback.
+    if streaming {
+        return &protocol.Decision{
+            Decision: protocol.DecisionText,
+            History:  history,
+            Text:     &protocol.TextResp{Content: "Starting a thought…", Finished: false},
+        }, nil
+    }
+
+    // (a) no advertised model ⇒ never llm_call.
+    if len(models) == 0 {
+        return &protocol.Decision{
+            Decision: protocol.DecisionText,
+            History:  history,
+            Text:     &protocol.TextResp{Content: "No model available in this session.", Finished: true},
+        }, nil
+    }
+
+    return &protocol.Decision{
+        Decision: protocol.DecisionText,
+        History:  history,
+        Text:     &protocol.TextResp{Content: "Echo: " + req.Message.Content, Finished: true},
+    }, nil
+}
+
+func (h *MyHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+    h.mu.Lock()
+    // (c) ResultRequest has no context — the snapshot comes from session state.
+    history := make([]protocol.HistoryEntry, len(h.sessions[req.SessionID]))
+    copy(history, h.sessions[req.SessionID])
+    h.mu.Unlock()
+
+    return &protocol.Decision{
+        Decision: protocol.DecisionText,
+        History:  history,
+        // (b) step 2 — close the stream.
+        Text: &protocol.TextResp{Content: "Result received.", Finished: true},
+    }, nil
+}
+```
+
+`h3-test --endpoint http://localhost:9191` is the arbiter for all three; the
+integration guide's
+[Decision contracts the battery enforces](integration-guide.md#decision-contracts-the-battery-enforces)
+walks the same rules from the consumer side. (`DecisionID` is omitted in the
+snippet above — the server fills a UUIDv4 when it is empty; use
+`protocol.NewDecision` when you want to own the id.)
 
 ## 5. Request/response types (`protocol`)
 
