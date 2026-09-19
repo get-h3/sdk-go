@@ -161,6 +161,20 @@ go run main.go
 
 You now have a live harness on `http://localhost:9191`.
 
+**Every example honors the `PORT` environment variable** (default `9191`), so when
+another harness already holds the default port you move the listener instead of
+editing source. The same rule applies to your own harness if you build the address
+with `harness.ListenAddr()` and serve it with `harness.Serve`:
+
+```bash
+PORT=9293 go run ./examples/conformance/
+# in another terminal:
+h3-test --endpoint http://127.0.0.1:9293
+```
+
+A port collision is reported with the address and a hint naming the override
+(`address already in use on :9191 — is another harness running? set PORT to override`).
+
 ### Test it with curl
 
 One complete turn against that live harness. `session_id`, `identity.platform`,
@@ -431,7 +445,7 @@ curl -s http://127.0.0.1:9191/v1/sessions/sess-abc
 | Symptom | Cause | Fix |
 |---|---|---|
 | `connection refused` | Server not running, or wrong port | Confirm `go run main.go` output; match `--endpoint` to the `ListenAndServe` port |
-| `address already in use` | Port 9191 taken | Use another port in both `main.go` and `h3-test --endpoint http://localhost:9192` |
+| `address already in use` | Another harness (or an example) already holds the port | Don't edit `main.go` — set `PORT` when you start the server and point the battery at the same port: `PORT=9293 go run main.go` + `h3-test --endpoint http://127.0.0.1:9293`. Every example honors `PORT` (default `9191`) |
 | Battery hangs on one test | Harness method blocked >30s | Server replies `504 JSON HARNESS_TIMEOUT` (`{"error":{"code":"HARNESS_TIMEOUT",...}}`); make the method return promptly or move work to a goroutine |
 | `400 INVALID_REQUEST` | Battery sends minimal requests | Don't require optional fields; only `session_id`, `message.role`, `identity.platform`, `identity.chat_id` are guaranteed |
 | `400 decision_id … already been resolved` | You retried a result that was already applied | Treat it as applied and re-`GET` the session instead of resending — see [result correlation](#result-correlation-and-at-least-once-delivery) |

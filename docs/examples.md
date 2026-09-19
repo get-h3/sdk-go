@@ -12,14 +12,18 @@ reach for.
 | `conformance` | [`examples/conformance/main.go`](../examples/conformance/main.go) + [`testbed/conformance.go`](../testbed/conformance.go) | Keyword-triggered full agent loop exercising **five of the six decision types** (`tool_call`, `llm_call`, `text`, `delegate`, `end`); `wait` is advertised in capabilities but never returned | ✔ (purpose-built for h3-test) | Demonstrating/validating the full protocol surface against the battery |
 | `consensus` | [`examples/consensus/main.go`](../examples/consensus/main.go) | Real-world integration: H3 harness driving the Consensus REST API for multi-model deliberation | ✔ (with Consensus running; falls back to echo) | Template for connecting an external agent backend to H3 |
 
-All four serve on `:9191` via `harness.NewHTTPServer` and can be battery-checked
-the same way:
+All four serve through `harness.NewHTTPServer` + the shared `harness.Serve` helper,
+and **every example honors the `PORT` environment variable** (default `9191`), so two
+examples can run side by side and a port collision is reported with the address and a
+hint naming the override:
 
 ```bash
-go run ./examples/<name>
+PORT=9293 go run ./examples/conformance/
 # in another terminal:
-h3-test --endpoint http://localhost:9191
+h3-test --endpoint http://127.0.0.1:9293
 ```
+
+With no `PORT` set, all four still serve on `:9191` as before.
 
 ## 1. minimal — the smallest compliant harness
 
@@ -102,13 +106,14 @@ drives the Consensus multi-model deliberation REST API.
 - `OnResult` receives the tool result, refines the deliberation (up to
   `maxTurns = 3` turns), then returns a `text` summary and `end`.
 - `OnCancel` / `OnSessionTerminate` clean up the per-session Consensus state.
-- Configuration via env vars: `CONSENSUS_URL` (default `http://localhost:8080`)
-  and `CONSENSUS_API_KEY`.
+- Configuration via env vars: `CONSENSUS_URL` (default `http://localhost:8080`),
+  `CONSENSUS_API_KEY`, and `PORT` for the H3 listener (default `9191` — the banner
+  prints the resolved address).
 - Resilience pattern: if Consensus is unreachable, `OnProcess` falls back to a
   `text` response instead of erroring the session.
 
 ```bash
-CONSENSUS_URL=http://localhost:8080 go run ./examples/consensus
+CONSENSUS_URL=http://localhost:8080 PORT=9295 go run ./examples/consensus
 ```
 
 **What it teaches:** the full `tool_call` → result → `text` → `end` loop against

@@ -1,17 +1,22 @@
 // Package main — echo H3 harness example.
 // Demonstrates a harness that echoes back the user's message content
 // and reports the received decision ID on each result.
+//
+// Run with:
+//
+//	go run ./examples/echo/
+//
+// Every example honors the PORT environment variable (default 9191), so a second
+// harness can run next to one that already holds the default port:
+//
+//	PORT=9293 go run ./examples/echo/
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
-	"net/http"
-	"os"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/get-h3/sdk-go/harness"
 	"github.com/get-h3/sdk-go/protocol"
@@ -99,16 +104,10 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 }
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "9191"
-	}
-	addr := ":" + port
+	addr := harness.ListenAddr()
 	h := harness.NewHTTPServer(&EchoHarness{})
-	log.Printf("h3 echo harness listening on %s (set PORT to override)", addr)
-	err := http.ListenAndServe(addr, h)
-	if errors.Is(err, syscall.EADDRINUSE) {
-		log.Fatalf("address already in use on %s — is another harness running? set PORT to override", addr)
-	}
-	log.Fatal(err)
+	log.Printf("h3 echo harness listening on %s (set %s to override)", addr, harness.PortEnv)
+	// Serve never returns: it reports a bind collision with the shared hint
+	// naming the PORT override, and every other listen error is fatal.
+	harness.Serve(addr, h)
 }

@@ -1,11 +1,19 @@
 // Package main — minimal H3 harness example.
 // Demonstrates the simplest possible harness: respond with a fixed message
 // on every process request, end on every result.
+//
+// Run with:
+//
+//	go run ./examples/minimal/
+//
+// Every example honors the PORT environment variable (default 9191), so a second
+// harness can run next to one that already holds the default port:
+//
+//	PORT=9294 go run ./examples/minimal/
 package main
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/get-h3/sdk-go/harness"
 	"github.com/get-h3/sdk-go/protocol"
@@ -51,6 +59,10 @@ func (h *MinimalHarness) Health() *protocol.HealthResponse {
 }
 
 func main() {
+	addr := harness.ListenAddr()
 	h := harness.NewHTTPServer(&MinimalHarness{})
-	log.Fatal(http.ListenAndServe(":9191", h))
+	log.Printf("h3 minimal harness listening on %s (set %s to override)", addr, harness.PortEnv)
+	// Serve never returns: it reports a bind collision with the shared hint
+	// naming the PORT override, and every other listen error is fatal.
+	harness.Serve(addr, h)
 }

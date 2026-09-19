@@ -178,8 +178,22 @@ Step 3 returns the live session state, for example:
 ```
 
 Every decision type, every error code and the full field reference:
-[docs/api-reference.md](docs/api-reference.md). Running on another port?
-`examples/echo` honors the `PORT` environment variable — `PORT=9393 go run ./examples/echo/`.
+[docs/api-reference.md](docs/api-reference.md).
+
+Running on another port? **Every example honors the `PORT` environment variable**
+(default `9191`), so a second harness can run next to one that already holds the
+default port:
+
+```bash
+PORT=9293 go run ./examples/conformance/
+# in another terminal:
+h3-test --endpoint http://127.0.0.1:9293
+```
+
+Your own `main` gets the same behaviour from the shared helpers — `harness.ListenAddr()`
+resolves `PORT` (default `9191`) for the address you pass to `http.ListenAndServe`, and
+`harness.Serve(addr, h)` reports a bind collision with a hint naming the `PORT` override
+instead of a bare `address already in use`.
 
 ## Package Structure
 

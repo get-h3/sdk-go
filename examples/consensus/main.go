@@ -16,12 +16,14 @@
 //
 //	CONSENSUS_URL      — base URL of the Consensus API (default: http://localhost:8080)
 //	CONSENSUS_API_KEY  — bearer token for the Consensus API (default: empty)
+//	PORT               — port the H3 harness listens on (default: 9191)
 //
 // Run with:
 //
 //	go run ./examples/consensus
 //
-// The H3 harness server listens on :9191.
+// The H3 harness server listens on :9191 by default; set PORT (e.g.
+// PORT=9295 go run ./examples/consensus) when another harness already holds it.
 package main
 
 import (
@@ -356,13 +358,17 @@ func main() {
 		baseURL = "http://localhost:8080"
 	}
 
+	addr := harness.ListenAddr()
+
 	log.Printf("Starting H3 Consensus reference harness")
 	log.Printf("  Consensus URL: %s", baseURL)
-	log.Printf("  H3 listen:     :9191")
+	log.Printf("  H3 listen:     %s", addr)
 	log.Printf("  API key set:   %v", os.Getenv("CONSENSUS_API_KEY") != "")
 
 	h := NewConsensusHarness()
 	server := harness.NewHTTPServer(h)
 
-	log.Fatal(http.ListenAndServe(":9191", server))
+	// Serve never returns: it reports a bind collision with the shared hint
+	// naming the PORT override, and every other listen error is fatal.
+	harness.Serve(addr, server)
 }
