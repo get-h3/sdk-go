@@ -121,3 +121,28 @@ promise tested, top findings, and time-to-first-success.
   docs/dogfood/diagnostics.md §8, skills/h3-sdk-go-usage/SKILL.md v1.0.5,
   board GAP-048..054.
 - **Foreman:** NOT woken and cooldown NOT touched (fleet law: 21600s minimum).
+
+## 2026-09-19 | PROMISING-BUT-ROUGH | t2fs ~10s (proxy) / bunker install ~27s build | friction 3 | 5 findings (DF-6..10, board commit 97be3ee)
+
+Promise: fresh user runs `go get github.com/get-h3/sdk-go` and builds an H3-compliant harness
+from the README quickstart in minutes.
+
+Real use this run (first run via the PUBLISHED module path): consumer from the Go proxy
+(v0.1.6, 0.5s to resolve), README quickstart builds+runs, full six-endpoint curl workflow
+passed (health/process/session/result/cancel/delete; 400 INVALID_REQUEST on missing identity
+and role!=user; 404 SESSION_NOT_FOUND on dead session; streaming finished=false held; cancel
+marks status=cancelled but session stays usable), testbed.NewMockHermes roundtrip test green,
+h3-test battery 46/46 PASSED 1.07s p95 180ms against the live quickstart. Bunker leg (agent
+25366843, destroyed+verified): clean Debian 13, clone OK, toolchain had to be installed by
+hand (README gap, DF-10), examples/minimal FAILS to build against published v0.1.6
+(ListenAddr/Serve/PortEnv are HEAD-only — DF-6, the release-drift class now breaks real code),
+after go mod init the quickstart binary passed the full smoke.
+
+Top findings: DF-8 (P1) h3-test scores 36/46 FAIL on a dead server (100s, p95 10s) instead of
+saying 'endpoint down'; DF-6 (P2) v0.1.6 cannot build examples/minimal; DF-7/9/10 docs gaps.
+Verdict PROMISING-BUT-ROUGH: the library itself is excellent and compliant; the rough edge is
+publishing discipline — 21 commits (7 wire-facing incl. GAP-048/049/050) unreleased past
+v0.1.6 (GAP-056, 7th recurrence), and now the drift has broken an in-repo example for @latest
+consumers.
+
+- **Foreman:** NOT woken and cooldown NOT touched (fleet law: 21600s minimum; project at 43200s).

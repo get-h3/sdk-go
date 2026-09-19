@@ -50,3 +50,14 @@ Tasks filed (board `.coding-hermes/board/tasks.jsonl`):
 - GAP-040 (P2): no curl/request-body examples in README or integration-guide — first two live process calls 400'd on identity fields; full body exists only deep in api-reference §2.
 - GAP-041 (P3): api-reference.md:117 still says message.role "non-empty"; GAP-032 tightened it to must equal "user" (L512 already correct).
 - GAP-042 (P3): documented async wait/resume pattern has no runnable example in examples/ — consumers must invent it (and will likely mix mutex scopes; this run's own draft did).
+
+
+## Dogfood Findings (2026-09-19)
+Verdict: PROMISING-BUT-ROUGH — library compliant and pleasant; publishing discipline is the blocker.
+Install leg: BUNKER RAN (agent 25366843, destroyed+verified) — clone OK, toolchain hand-install needed (DF-10), examples/minimal build FAILED against v0.1.6 (DF-6), README-quickstart path PASSED end-to-end incl. bunker smoke.
+
+- [P1] DF-H3-SDK-GO-FOREMAN-8: h3-test battery reports misleading 36/46 FAIL (100s, p95 10s) when the server under test is dead — no 'endpoint unreachable' signal; live server scores 46/46 in 1.07s.
+- [P2] DF-H3-SDK-GO-FOREMAN-6: examples/minimal does not compile against published v0.1.6 (harness.ListenAddr/Serve/PortEnv are HEAD-only) — GAP-056 release drift now breaks real consumer code.
+- [P2] DF-H3-SDK-GO-FOREMAN-7: examples/minimal ships without go.mod; fresh user must invent `go mod init` (undocumented).
+- [P3] DF-H3-SDK-GO-FOREMAN-9: testbed.NewMockHermes(harness.Harness) mis-use pattern — passing the http.Handler is the natural first guess; SendMessage returns *protocol.Decision not bool; needs a usage snippet.
+- [P3] DF-H3-SDK-GO-FOREMAN-10: README install section omits the Go toolchain prerequisite for clean machines.
