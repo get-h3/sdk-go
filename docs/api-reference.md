@@ -148,6 +148,31 @@ Request:
 `result.type` ∈ `tool_result` | `llm_response` | `text_sent` |
 `delegate_result` | `wait_timeout` | `error`.
 
+All three fields are required — `session_id`, `decision_id` and `result.type`.
+A request missing one of them is `400 INVALID_REQUEST` naming the field
+(`session_id is required`, `decision_id is required`, `result.type is
+required`), checked before the session store is consulted.
+
+**Correlation (GAP-049).** `decision_id` MUST be the session's **in-flight**
+decision id: the id returned by the immediately preceding `/v1/process` or
+`/v1/result` response for that session. The server verifies this *before* your
+`OnResult` runs, so a result that does not belong to the decision in flight
+never drives the loop:
+
+| Situation | Response |
+|---|---|
+| `decision_id` is the in-flight decision id | `200` — the next Decision (normal path) |
+| `decision_id` was already resolved | `400 INVALID_REQUEST` — `decision_id "…" has already been resolved for session "…"` — **safe to treat as already applied** |
+| `decision_id` is unknown or stale | `400 INVALID_REQUEST` — `decision_id "…" does not match the session's in-flight decision "…"` |
+| the session has no decision in flight | accepted as before (nothing to correlate against) |
+
+That is what makes at-least-once delivery safe: a client that retries a result
+after a timeout gets a `400` instead of re-running your side effects, and an
+invented id can no longer advance a session. `OnResult` is not called on either
+rejection. See
+[Result correlation and at-least-once delivery](integration-guide.md#result-correlation-and-at-least-once-delivery)
+for the retry recipe.
+
 Response `200` — the next Decision, exactly like `/v1/process`.
 
 ### `POST /v1/cancel`

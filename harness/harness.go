@@ -44,6 +44,12 @@ type sessionEntry struct {
 	TurnCount           int
 	CurrentDecisionID   string
 	CurrentDecisionType protocol.DecisionType
+	// LastResultDecisionID is the decision_id most recently accepted by
+	// POST /v1/result. CurrentDecisionID already holds the in-flight decision,
+	// so this second id is what makes a RETRY distinguishable from a stale or
+	// invented id: req.DecisionID == LastResultDecisionID (and != in-flight)
+	// means the result for that decision was already applied (GAP-049).
+	LastResultDecisionID string
 }
 
 // sessionStore is a thread-safe in-memory session tracker.
@@ -297,10 +303,53 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := req.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, err.Error())
+		return
+	}
+
 	if s.sessions.get(req.SessionID) == nil {
 		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
 			"session not found: "+req.SessionID)
 		return
+	}
+
+	// GAP-049: correlate the result with the session's in-flight decision
+	// BEFORE OnResult runs, so at-least-once delivery (a client retry, or two
+	// clients sharing one chat id) cannot re-execute the result's side effects.
+	// Nothing below may call OnResult unless this block accepts the id.
+	// GAP-043: read the ids through snapshot() — never dereference the raw
+	// *sessionEntry from get(), which is unlocked against update().
+	//
+	// The rule, when a decision IS in flight (CurrentDecisionID != ""):
+	//
+	//   * decision_id == in-flight            -> accept (the normal path).
+	//   * decision_id == last resolved id     -> 400 "already been resolved".
+	//     This is the idempotency guard: a retrying client may treat that 400
+	//     as "already applied" instead of replaying the side effect.
+	//   * anything else                       -> 400 "does not match the
+	//     session's in-flight decision" — an invented or long-stale id must not
+	//     drive the loop.
+	//
+	// When NO decision is in flight (CurrentDecisionID == "", e.g. the session
+	// was created and the harness has not answered yet) the result is accepted
+	// as before: there is nothing to correlate against, and rejecting it would
+	// break the permissive contract for a session with no outstanding work.
+	if snap, ok := s.sessions.snapshot(req.SessionID); ok && snap.CurrentDecisionID != "" {
+		switch {
+		case req.DecisionID == snap.CurrentDecisionID:
+			// In-flight match — fall through to OnResult.
+		case req.DecisionID == snap.LastResultDecisionID:
+			writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+				fmt.Sprintf("decision_id %q has already been resolved for session %q",
+					req.DecisionID, req.SessionID))
+			return
+		default:
+			writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+				fmt.Sprintf("decision_id %q does not match the session's in-flight decision %q",
+					req.DecisionID, snap.CurrentDecisionID))
+			return
+		}
 	}
 
 	// GAP-028: cancelled is terminal — a late POST /v1/result for an
@@ -336,10 +385,15 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 	// returns DecisionEnd from OnResult.
 	// GAP-028: cancelled is terminal — do not rewrite lifecycle state for
 	// already-cancelled sessions.
+	// GAP-049: also record the id this result was FOR. It is the retry
+	// fingerprint: once CurrentDecisionID moves on (to the decision just
+	// returned), a re-delivery of this same id matches LastResultDecisionID
+	// instead of the in-flight decision and is rejected as already resolved.
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
 		if e.Status == "cancelled" {
 			return
 		}
+		e.LastResultDecisionID = req.DecisionID
 		e.CurrentDecisionID = decision.DecisionID
 		e.CurrentDecisionType = decision.Decision
 		if decision.Decision == protocol.DecisionEnd {

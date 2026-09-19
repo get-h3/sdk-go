@@ -30,6 +30,10 @@ type mockHarness struct {
 	lastResultReq   *protocol.ResultRequest
 	lastCancelReq   *protocol.CancelRequest
 	panicOnProcess  bool
+	// resultCalls counts OnResult invocations. GAP-049's regression gate: a
+	// replayed (or invented) decision_id must be rejected by the HANDLER, so
+	// this counter must not move for a delivery the handler refuses.
+	resultCalls int
 }
 
 func (m *mockHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
@@ -42,6 +46,7 @@ func (m *mockHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decisio
 
 func (m *mockHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
 	m.lastResultReq = req
+	m.resultCalls++
 	return m.onResultDec, m.onResultErr
 }
 
@@ -363,9 +368,12 @@ func TestResultEndpoint(t *testing.T) {
 		t.Fatalf("POST /v1/process (setup): %v", err)
 	}
 
+	// GAP-049: decision_id must be the session's in-flight decision — the id
+	// POST /v1/process just returned (dec-test-001, the mock's OnProcess id).
+	// A result naming anything else is now rejected 400 INVALID_REQUEST.
 	resultBody := `{
 		"session_id": "sess-r1",
-		"decision_id": "dec-001",
+		"decision_id": "dec-test-001",
 		"result": {"type": "tool_result", "tool_name": "test", "success": true}
 	}`
 
@@ -624,6 +632,292 @@ func TestResultUnknownSession(t *testing.T) {
 	}
 	if errResp.Error.Code != protocol.ErrSessionNotFound {
 		t.Errorf("expected ErrSessionNotFound, got %q", errResp.Error.Code)
+	}
+}
+
+// GAP-049 -------------------------------------------------------------------
+//
+// POST /v1/result used to accept ANY decision_id: an invented id still drove
+// the loop, and re-delivering the SAME id called OnResult a second time —
+// re-running the harness's tool step (measured live: one decision_id delivered
+// twice produced two identical tool_calls). Under at-least-once delivery (a
+// client retry, two clients on one chat id) that double-executes side effects.
+// The handler now correlates decision_id with the session's in-flight decision
+// and refuses a duplicate/stale/invented id BEFORE OnResult, so the harness
+// callback counter is the regression gate.
+
+// postResult posts a /v1/result for (sid, decisionID) with the given
+// result.type and returns the HTTP status plus the raw response body.
+func postResult(t *testing.T, ts *httptest.Server, sid, decisionID, resultType string) (int, []byte) {
+	t.Helper()
+	body := `{"session_id": "` + sid + `", "decision_id": "` + decisionID +
+		`", "result": {"type": "` + resultType + `", "tool_name": "test", "success": true}}`
+	resp, err := http.Post(ts.URL+"/v1/result", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /v1/result: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read POST /v1/result body: %v", err)
+	}
+	return resp.StatusCode, raw
+}
+
+// TestResultEndpoint_DuplicateDecisionIDRejected (GAP-049): delivering the SAME
+// decision_id twice must be refused with 400 INVALID_REQUEST ("already been
+// resolved") and — the point of the whole fix — the harness-side OnResult must
+// NOT run a second time. Pre-fix the second delivery returned 200 and invoked
+// OnResult again, re-executing the result's side effects.
+func TestResultEndpoint_DuplicateDecisionIDRejected(t *testing.T) {
+	m := newMockHarness()
+	m.onResultDec = &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-dup-002",
+		Text:       &protocol.TextResp{Content: "applied once", Finished: true},
+	}
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	const sid = "sess-gap049-dup"
+	d1 := postProcess(t, ts, sid).DecisionID
+	if d1 == "" {
+		t.Fatal("POST /v1/process returned an empty decision_id; cannot correlate")
+	}
+
+	// 1. First delivery of d1 — accepted, harness runs once.
+	status, raw := postResult(t, ts, sid, d1, "tool_result")
+	if status != http.StatusOK {
+		t.Fatalf("first delivery: expected 200, got %d (%s)", status, raw)
+	}
+	var dec protocol.Decision
+	if err := json.Unmarshal(raw, &dec); err != nil {
+		t.Fatalf("decode first result decision: %v", err)
+	}
+	if dec.DecisionID != "dec-dup-002" {
+		t.Fatalf("expected next decision dec-dup-002, got %q", dec.DecisionID)
+	}
+	callsAfterFirst := m.resultCalls
+	if callsAfterFirst != 1 {
+		t.Fatalf("expected OnResult to have run exactly once, got %d", callsAfterFirst)
+	}
+
+	// 2. Replay of d1 — refused, and OnResult must not run again.
+	status, raw = postResult(t, ts, sid, d1, "tool_result")
+	if status != http.StatusBadRequest {
+		t.Fatalf("replayed delivery: expected 400, got %d (%s)", status, raw)
+	}
+	var errResp protocol.ErrorResponse
+	if err := json.Unmarshal(raw, &errResp); err != nil {
+		t.Fatalf("decode replay error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrInvalidRequest {
+		t.Errorf("expected ErrInvalidRequest, got %q", errResp.Error.Code)
+	}
+	if !strings.Contains(errResp.Error.Message, "already been resolved") {
+		t.Errorf("expected 'already been resolved' in message, got %q", errResp.Error.Message)
+	}
+	if m.resultCalls != callsAfterFirst {
+		t.Errorf("OnResult ran again for a replayed decision_id (resultCalls %d -> %d): the duplicate re-executed harness side effects",
+			callsAfterFirst, m.resultCalls)
+	}
+
+	// 3. The refused delivery left the session exactly where the accepted one
+	// put it: one turn for process + one for the accepted result, and the
+	// in-flight decision is still the decision that result returned.
+	sr := getSession(t, ts, sid)
+	if sr.TurnCount != 2 {
+		t.Errorf("expected turn_count 2 (process + accepted result), got %d — a refused result must not count as a turn", sr.TurnCount)
+	}
+	if sr.CurrentDecision != "dec-dup-002" {
+		t.Errorf("expected current_decision dec-dup-002, got %q", sr.CurrentDecision)
+	}
+}
+
+// TestResultEndpoint_InventedDecisionIDRejected (GAP-049): a decision_id the
+// session never issued must be refused with 400 INVALID_REQUEST and must not
+// reach OnResult or touch session state. Pre-fix an invented id returned 200
+// and produced a decision, i.e. it drove the loop.
+func TestResultEndpoint_InventedDecisionIDRejected(t *testing.T) {
+	m := newMockHarness()
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	const sid = "sess-gap049-bogus"
+	d1 := postProcess(t, ts, sid).DecisionID
+	if d1 == "" {
+		t.Fatal("POST /v1/process returned an empty decision_id; cannot correlate")
+	}
+
+	status, raw := postResult(t, ts, sid, "bogus-decision-id", "tool_result")
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an invented decision_id, got %d (%s)", status, raw)
+	}
+	var errResp protocol.ErrorResponse
+	if err := json.Unmarshal(raw, &errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != protocol.ErrInvalidRequest {
+		t.Errorf("expected ErrInvalidRequest, got %q", errResp.Error.Code)
+	}
+	if !strings.Contains(errResp.Error.Message, "does not match the session's in-flight decision") {
+		t.Errorf("expected mismatch message, got %q", errResp.Error.Message)
+	}
+	if !strings.Contains(errResp.Error.Message, d1) {
+		t.Errorf("expected the in-flight decision id %q to be named in the message, got %q", d1, errResp.Error.Message)
+	}
+	if m.resultCalls != 0 || m.lastResultReq != nil {
+		t.Errorf("OnResult must NOT be called for an invented decision_id (calls=%d, lastReq=%v)", m.resultCalls, m.lastResultReq)
+	}
+
+	// Session state untouched: still the single process turn, still d1 in flight.
+	sr := getSession(t, ts, sid)
+	if sr.TurnCount != 1 {
+		t.Errorf("expected turn_count 1 (process only), got %d", sr.TurnCount)
+	}
+	if sr.CurrentDecision != d1 {
+		t.Errorf("expected current_decision %q, got %q", d1, sr.CurrentDecision)
+	}
+}
+
+// TestResultEndpoint_HappyPathCorrelation (GAP-049): the normal path is
+// unchanged — a result naming the session's in-flight decision is accepted with
+// 200 and the next decision, and GET /v1/sessions/{id} then reports the NEW
+// decision as current.
+func TestResultEndpoint_HappyPathCorrelation(t *testing.T) {
+	m := newMockHarness()
+	m.onResultDec = &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-happy-002",
+		Text:       &protocol.TextResp{Content: "next step", Finished: true},
+	}
+	srv := NewHTTPServer(m)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	const sid = "sess-gap049-happy"
+	d1 := postProcess(t, ts, sid).DecisionID
+
+	status, raw := postResult(t, ts, sid, d1, "tool_result")
+	if status != http.StatusOK {
+		t.Fatalf("expected 200 for the in-flight decision_id, got %d (%s)", status, raw)
+	}
+	var dec protocol.Decision
+	if err := json.Unmarshal(raw, &dec); err != nil {
+		t.Fatalf("decode decision: %v", err)
+	}
+	if dec.DecisionID != "dec-happy-002" {
+		t.Errorf("expected next decision dec-happy-002, got %q", dec.DecisionID)
+	}
+	if m.resultCalls != 1 {
+		t.Errorf("expected OnResult to run once, got %d", m.resultCalls)
+	}
+
+	sr := getSession(t, ts, sid)
+	if sr.CurrentDecision != "dec-happy-002" {
+		t.Errorf("expected current_decision dec-happy-002 (the NEW decision), got %q", sr.CurrentDecision)
+	}
+	if sr.CurrentDecisionType != protocol.DecisionText {
+		t.Errorf("expected current_decision_type text, got %q", sr.CurrentDecisionType)
+	}
+}
+
+// TestResultEndpoint_NoDecisionInFlightAccepts (GAP-049): a session with NO
+// decision in flight (POST /v1/process still running — the harness has not
+// answered yet) accepts the result exactly as before. There is nothing to
+// correlate against, so rejecting it would be a new failure mode rather than a
+// guard.
+func TestResultEndpoint_NoDecisionInFlightAccepts(t *testing.T) {
+	m := newMockHarness()
+	bh := &blockingHarness{
+		mockHarness:    *m,
+		processStarted: make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	srv := NewHTTPServer(bh)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	const sid = "sess-gap049-noflight"
+	go func() {
+		resp, err := http.Post(ts.URL+"/v1/process", "application/json",
+			strings.NewReader(processBody(sid)))
+		if err != nil {
+			return
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	// OnProcess is blocked, so the session exists with no decision finalized.
+	<-bh.processStarted
+
+	status, raw := postResult(t, ts, sid, "whatever-id", "tool_result")
+	if status != http.StatusOK {
+		t.Errorf("expected 200 while nothing is in flight, got %d (%s)", status, raw)
+	}
+
+	close(bh.release)
+}
+
+// TestResultEndpoint_Validation (GAP-049): session_id, decision_id and
+// result.type are required. Each omission is 400 INVALID_REQUEST, and none of
+// them may reach OnResult.
+func TestResultEndpoint_Validation(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		{
+			name:    "empty decision_id",
+			body:    `{"session_id": "sess-gap049-valid", "decision_id": "", "result": {"type": "tool_result", "success": true}}`,
+			wantMsg: "decision_id is required",
+		},
+		{
+			name:    "empty session_id",
+			body:    `{"session_id": "", "decision_id": "dec-anything", "result": {"type": "tool_result", "success": true}}`,
+			wantMsg: "session_id is required",
+		},
+		{
+			name:    "empty result.type",
+			body:    `{"session_id": "sess-gap049-valid", "decision_id": "dec-anything", "result": {"success": true}}`,
+			wantMsg: "result.type is required",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newMockHarness()
+			srv := NewHTTPServer(m)
+			ts := httptest.NewServer(srv)
+			defer ts.Close()
+
+			resp, err := http.Post(ts.URL+"/v1/result", "application/json", strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatalf("POST /v1/result: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", resp.StatusCode)
+			}
+			var errResp protocol.ErrorResponse
+			if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+				t.Fatalf("decode error response: %v", err)
+			}
+			if errResp.Error.Code != protocol.ErrInvalidRequest {
+				t.Errorf("expected ErrInvalidRequest, got %q", errResp.Error.Code)
+			}
+			if !strings.Contains(errResp.Error.Message, tc.wantMsg) {
+				t.Errorf("expected message containing %q, got %q", tc.wantMsg, errResp.Error.Message)
+			}
+			if m.resultCalls != 0 || m.lastResultReq != nil {
+				t.Errorf("OnResult must NOT be called for an invalid result request (calls=%d)", m.resultCalls)
+			}
+		})
 	}
 }
 
@@ -1454,9 +1748,17 @@ func (h *concurrentHarness) OnResult(req *protocol.ResultRequest) (*protocol.Dec
 	h.mu.Lock()
 	h.resultCalls++
 	h.mu.Unlock()
+	// GAP-049 fixture adaptation: echo the decision_id the result was FOR back
+	// as the next decision's id, so the id stays the session's in-flight
+	// decision across iterations. Without this the first accepted result would
+	// move CurrentDecisionID to a fixed id and every concurrent writer still
+	// posting "dec-race-proc" would be rejected as already resolved — which is
+	// the GAP-049 rule working, not the race under test. This test is about
+	// the unlocked-read race (GAP-043) and must keep every writer's POST
+	// landing, exactly as before.
 	return &protocol.Decision{
 		Decision:   protocol.DecisionText,
-		DecisionID: "dec-race-res",
+		DecisionID: req.DecisionID,
 		Text:       &protocol.TextResp{Content: "result received", Finished: true},
 	}, nil
 }

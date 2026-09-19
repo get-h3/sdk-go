@@ -368,6 +368,7 @@ Errors follow one JSON shape everywhere:
 |---|---|---|
 | Malformed JSON body | 400 | `INVALID_REQUEST` |
 | Missing `session_id` / `message.role` / `identity.platform` / `identity.chat_id` | 400 | `INVALID_REQUEST` |
+| A result's `decision_id` is not the session's in-flight decision (retry, stale or invented) | 400 | `INVALID_REQUEST` |
 | Your method returns an error | 500 | `INTERNAL_ERROR` |
 | Your decision fails validation (missing payload, empty content) | 500 | `INVALID_DECISION` |
 | Unknown session on GET/DELETE | 404 | `SESSION_NOT_FOUND` |
@@ -383,6 +384,46 @@ Best practices:
   process keeps serving. Fix panics anyway — the client sees a `500` JSON
   `ErrorResponse` with code `INTERNAL_ERROR`.
 
+### Result correlation and at-least-once delivery
+
+`POST /v1/result` is correlated, not fire-and-forget: `decision_id` MUST be the
+**in-flight** decision id — the id from the immediately preceding
+`/v1/process` or `/v1/result` response for that session. The server checks it
+before your `OnResult` runs:
+
+| You send | You get |
+|---|---|
+| the in-flight decision id | `200` + the next decision (normal path) |
+| a decision id that was already resolved | `400 INVALID_REQUEST`, `decision_id "…" has already been resolved for session "…"` |
+| an unknown / invented decision id | `400 INVALID_REQUEST`, `decision_id "…" does not match the session's in-flight decision "…"` |
+| anything, on a session with no decision in flight | `200` (nothing to correlate against) |
+
+Why you care: delivery is **at-least-once** — a client may retry after a
+timeout, and two clients can share one chat id. Before this rule a replayed
+result re-ran `OnResult`, which re-executed the harness's tool step and any side
+effects it performs; an invented id drove the loop too. Now both are refused
+before your code is called.
+
+Client recipe, in full:
+
+1. Keep the decision id you are answering with your in-flight request.
+2. On retry, reuse **that same** in-flight decision id — do not re-`process` to
+   get a fresh one, that is a new turn.
+3. On `400` with `already been resolved`, treat the result as **applied** (it
+   was) and call `GET /v1/sessions/{id}` to pick up the current
+   `current_decision` instead of resending.
+4. On `400` with `does not match …in-flight decision`, your id is stale: `GET`
+   the session and answer the decision it reports.
+
+```bash
+# Retry-safe: re-send the SAME in-flight decision id, or read the session first.
+curl -s -X POST http://127.0.0.1:9191/v1/result \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"sess-abc","decision_id":"<in-flight id>","result":{"type":"tool_result","success":true}}'
+# 400 "already been resolved" → already applied; re-GET instead of resending:
+curl -s http://127.0.0.1:9191/v1/sessions/sess-abc
+```
+
 ## 7. Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -391,6 +432,7 @@ Best practices:
 | `address already in use` | Port 9191 taken | Use another port in both `main.go` and `h3-test --endpoint http://localhost:9192` |
 | Battery hangs on one test | Harness method blocked >30s | Server replies `504 JSON HARNESS_TIMEOUT` (`{"error":{"code":"HARNESS_TIMEOUT",...}}`); make the method return promptly or move work to a goroutine |
 | `400 INVALID_REQUEST` | Battery sends minimal requests | Don't require optional fields; only `session_id`, `message.role`, `identity.platform`, `identity.chat_id` are guaranteed |
+| `400 decision_id … already been resolved` | You retried a result that was already applied | Treat it as applied and re-`GET` the session instead of resending — see [result correlation](#result-correlation-and-at-least-once-delivery) |
 | `500 INVALID_DECISION` | Decision missing its payload | Every `text` decision needs `Text`; every `end` needs `End`; `text.content` must be non-empty |
 | `no_models_available` fails | An `llm_call` was returned while `context.models` was empty | Branch on `len(req.Context.Models)` and answer with `text`/`end` instead of a model name — see [decision contracts](#decision-contracts-the-battery-enforces) |
 | `process_text_finished_false` fails | The `"do not finish"` prompt wasn't treated as a stream | Detect it with `strings.Contains(req.Message.Content, "do not finish")` and return `Finished: false` — see [decision contracts](#decision-contracts-the-battery-enforces) |

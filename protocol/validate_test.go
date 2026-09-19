@@ -418,3 +418,66 @@ func TestCancelRequestValidate_ValidReasons(t *testing.T) {
 		}
 	}
 }
+
+// TestResultRequestValidate (GAP-049): session_id, decision_id and result.type
+// are all required. decision_id in particular used to go unchecked, so an
+// empty id reached the handler and could not be correlated with anything the
+// session had in flight.
+func TestResultRequestValidate(t *testing.T) {
+	validResult := Result{Type: ResultTool, ToolName: "read_file", Success: true}
+
+	tests := []struct {
+		name      string
+		req       ResultRequest
+		wantField string
+		wantMsg   string
+	}{
+		{
+			name:      "missing session_id",
+			req:       ResultRequest{DecisionID: "dec-1", Result: validResult},
+			wantField: "session_id",
+			wantMsg:   "session_id is required",
+		},
+		{
+			name:      "missing decision_id",
+			req:       ResultRequest{SessionID: "sess-1", Result: validResult},
+			wantField: "decision_id",
+			wantMsg:   "decision_id is required",
+		},
+		{
+			name:      "missing result.type",
+			req:       ResultRequest{SessionID: "sess-1", DecisionID: "dec-1"},
+			wantField: "result.type",
+			wantMsg:   "result.type is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.req.Validate()
+			if err == nil {
+				t.Fatalf("expected an error for %s, got nil", tc.name)
+			}
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error is not *ValidationError, got %T: %v", err, err)
+			}
+			if ve.Code != ErrInvalidRequest {
+				t.Errorf("Code = %q, want %q", ve.Code, ErrInvalidRequest)
+			}
+			if ve.Error() != tc.wantMsg {
+				t.Errorf("Message = %q, want %q", ve.Error(), tc.wantMsg)
+			}
+			if field, ok := ve.Details["field"]; !ok || field != tc.wantField {
+				t.Errorf("Details[field] = %v, want %q", field, tc.wantField)
+			}
+		})
+	}
+
+	t.Run("fully populated", func(t *testing.T) {
+		req := ResultRequest{SessionID: "sess-1", DecisionID: "dec-1", Result: validResult}
+		if err := req.Validate(); err != nil {
+			t.Errorf("expected nil error, got %v", err)
+		}
+	})
+}

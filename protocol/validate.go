@@ -63,6 +63,27 @@ func (r *CancelRequest) Validate() error {
 	return nil
 }
 
+// Validate checks that a ResultRequest is well-formed.
+// Required fields: session_id, decision_id and result.type. decision_id is not
+// decoration: it names the decision the result is FOR, and the harness
+// correlates it against the session's in-flight decision before OnResult runs
+// (GAP-049). A request that fails this check is rejected with 400
+// INVALID_REQUEST before the session store is consulted, so an empty
+// decision_id can never be read as "a result for whatever happened to be in
+// flight".
+func (r *ResultRequest) Validate() error {
+	if r.SessionID == "" {
+		return newValidationError(ErrInvalidRequest, "session_id", "session_id is required")
+	}
+	if r.DecisionID == "" {
+		return newValidationError(ErrInvalidRequest, "decision_id", "decision_id is required")
+	}
+	if r.Result.Type == "" {
+		return newValidationError(ErrInvalidRequest, "result.type", "result.type is required")
+	}
+	return nil
+}
+
 // Validate checks that a Decision is well-formed.
 func (d *Decision) Validate() error {
 	if d.DecisionID == "" {
