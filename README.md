@@ -130,8 +130,13 @@ curl -s http://127.0.0.1:9191/v1/health
 ```
 
 ```json
-{"status":"ok","version":"1.0.0","transport":"rest","protocol_version":"1.0","capabilities":["text"]}
+{"status":"ok","version":"1.0.0","transport":"rest","protocol_version":"1.0","uptime_seconds":0,"active_sessions":0,"capabilities":["text"]}
 ```
+
+`uptime_seconds` and `active_sessions` are filled by the SDK server (it owns the
+clock and the session store), not by your `Health()` — your `Health()` supplies
+the identity fields. See
+[`docs/api-reference.md` §2](docs/api-reference.md#get-v1health).
 
 ```bash
 # 2. Send a user message (HTTP 200)

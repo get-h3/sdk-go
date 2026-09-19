@@ -134,7 +134,9 @@ func (h *EchoHarness) OnSessionTerminate(sessionID string) error {
     return nil
 }
 
-// Health returns harness health status.
+// Health returns harness health status. Identity + capabilities are yours; the
+// SDK server fills uptime_seconds and active_sessions on the way out (it owns
+// the clock and the session store) — you cannot know them here.
 func (h *EchoHarness) Health() *protocol.HealthResponse {
     return &protocol.HealthResponse{
         Status:          protocol.HealthOK,
@@ -203,7 +205,7 @@ the full HTTP contract for every decision type and error code.
 | `OnResult` | Called after Hermes executes a decision. Return the **next decision**; return `DecisionEnd` to finish the session. |
 | `OnCancel` | User interrupt. Clean up any in-flight work and return `nil`. |
 | `OnSessionTerminate` | `DELETE /v1/sessions/{id}`. Release session-scoped resources. |
-| `Health` | Liveness for load balancers / the battery's health category. Report `HealthOK` (or `HealthDegraded` with a reason). |
+| `Health` | Liveness for load balancers / the battery's health category. Report `HealthOK` (or `HealthDegraded` with a reason) and your identity fields — the SDK server fills `uptime_seconds` and `active_sessions` for you. |
 | `harness.NewHTTPServer` | Wraps your harness in the full HTTP layer: routing, JSON codec, validation, session tracking, middleware. |
 
 Three rules keep you compliant:
@@ -448,8 +450,14 @@ curl -s http://127.0.0.1:9191/v1/sessions/sess-abc
 - **Put it behind a reverse proxy** (Caddy, nginx) for TLS and request size limits;
   the harness itself is plain HTTP.
 - **Wire up the health endpoint** (`GET /v1/health`) to your load balancer /
-  orchestrator — it reports `status`, `version`, `uptime_seconds`, `active_sessions`,
-  and `capabilities`.
+  orchestrator. Your `Health()` supplies the identity/capability fields —
+  `status`, `version`, `transport`, `protocol_version`, `capabilities`,
+  `degraded_reason`, `error` — and the SDK server fills the two runtime metrics:
+  `uptime_seconds` (seconds since `NewHTTPServer`, filled on every response) and
+  `active_sessions` (sessions currently in the server's in-memory store, i.e.
+  created by `POST /v1/process` and dropped by `DELETE /v1/sessions/{id}`). Both
+  are always present, including `0`, so an LB rule on either can never read an
+  absent field; anything your `Health()` sets for them is overwritten.
 - **Prefer graceful shutdown** so in-flight sessions can finish:
 
   ```go

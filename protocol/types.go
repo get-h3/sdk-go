@@ -255,15 +255,21 @@ const (
 
 // HealthResponse is the response from GET /v1/health.
 type HealthResponse struct {
-	Status          HealthStatus   `json:"status"`
-	Version         string         `json:"version"`
-	Transport       string         `json:"transport,omitempty"`
-	ProtocolVersion string         `json:"protocol_version,omitempty"`
-	UptimeSeconds   int            `json:"uptime_seconds,omitempty"`
-	ActiveSessions  int            `json:"active_sessions,omitempty"`
-	Capabilities    []DecisionType `json:"capabilities,omitempty"`
-	DegradedReason  string         `json:"degraded_reason,omitempty"`
-	Error           string         `json:"error,omitempty"`
+	Status          HealthStatus `json:"status"`
+	Version         string       `json:"version"`
+	Transport       string       `json:"transport,omitempty"`
+	ProtocolVersion string       `json:"protocol_version,omitempty"`
+	// UptimeSeconds and ActiveSessions are SDK-filled, not harness-filled: the
+	// HTTP server built by harness.NewHTTPServer knows its own age and owns the
+	// session store, so it overwrites whatever a harness's Health() set here.
+	// They deliberately carry no omitempty — the health body always names both
+	// fields, including the legitimate 0 of a just-started server with no
+	// sessions (GAP-050).
+	UptimeSeconds  int            `json:"uptime_seconds"`
+	ActiveSessions int            `json:"active_sessions"`
+	Capabilities   []DecisionType `json:"capabilities,omitempty"`
+	DegradedReason string         `json:"degraded_reason,omitempty"`
+	Error          string         `json:"error,omitempty"`
 }
 
 // SessionStatus enumerates session lifecycle states.

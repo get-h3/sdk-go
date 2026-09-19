@@ -117,18 +117,35 @@ func (s *sessionStore) delete(sessionID string) {
 	delete(s.sessions, sessionID)
 }
 
+// count returns the number of sessions currently present in the store — any
+// status (active, completed or cancelled), because a session leaves the store
+// only via DELETE /v1/sessions/{id}. It backs the SDK-filled active_sessions
+// health field (GAP-050), so it reads the map under the same lock as every
+// other accessor and is safe to call from concurrent health requests.
+func (s *sessionStore) count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.sessions)
+}
+
 // server holds the harness and session store for HTTP handlers.
 type server struct {
 	harness  Harness
 	sessions *sessionStore
+	// startedAt is when NewHTTPServer built this handler. It is the server's
+	// own clock for the SDK-filled uptime_seconds health field (GAP-050): the
+	// harness cannot know how long the HTTP server has been serving, so the
+	// server reports it.
+	startedAt time.Time
 }
 
 // NewHTTPServer creates an http.Handler with all H3 endpoints.
 // The returned handler is ready to use with http.ListenAndServe.
 func NewHTTPServer(h Harness) http.Handler {
 	srv := &server{
-		harness:  h,
-		sessions: newSessionStore(),
+		harness:   h,
+		sessions:  newSessionStore(),
+		startedAt: time.Now(),
 	}
 
 	mux := http.NewServeMux()
@@ -217,6 +234,14 @@ func writeError(w http.ResponseWriter, status int, code protocol.ErrorCode, mess
 }
 
 // healthHandler handles GET /v1/health.
+//
+// Supplier split (GAP-050): the harness owns the identity/capability fields of
+// the body — status, version, transport, protocol_version, capabilities,
+// degraded_reason and error — and the server passes them through verbatim. The
+// SERVER owns uptime_seconds (it is the only party that knows how long this
+// HTTP server has been serving) and active_sessions (it owns the session
+// store), so it fills those two on the way out; whatever the harness set for
+// them is overwritten.
 func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	resp := s.harness.Health()
 	if resp == nil {
@@ -227,7 +252,31 @@ func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
 			ProtocolVersion: "1.0",
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+
+	// Copy before filling. resp is the harness's own memory: a harness that
+	// builds its health body once (a package-level value, or a struct field
+	// returned on every call) would otherwise be written by concurrent health
+	// requests — a data race the SDK must not introduce — and the harness's
+	// struct would silently start reporting server-derived values.
+	out := *resp
+	out.UptimeSeconds = s.uptimeSeconds()
+	out.ActiveSessions = s.sessions.count()
+	writeJSON(w, http.StatusOK, &out)
+}
+
+// uptimeSeconds is this server's age in whole seconds. A zero startedAt (a
+// server value not built by NewHTTPServer, as an in-package test may build)
+// reports 0 rather than the age of the zero time, and a backwards clock is
+// clamped at 0 so the field can never be negative.
+func (s *server) uptimeSeconds() int {
+	if s.startedAt.IsZero() {
+		return 0
+	}
+	uptime := int(time.Since(s.startedAt).Seconds())
+	if uptime < 0 {
+		return 0
+	}
+	return uptime
 }
 
 // processHandler handles POST /v1/process.

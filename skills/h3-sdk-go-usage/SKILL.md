@@ -40,7 +40,7 @@ go mod edit -replace github.com/get-h3/sdk-go=/path/to/sdk-go && go get github.c
 
 # Verify
 h3-test --endpoint http://localhost:9191   # exit 0 = compliant
-go test ./... -count=1                     # repo suite (143 Go tests), ~3s
+go test ./... -count=1                     # repo suite (147 Go tests), ~3s
 ```
 
 ## The right way (proven patterns)
@@ -70,7 +70,10 @@ go test ./... -count=1                     # repo suite (143 Go tests), ~3s
    history passthrough, drive `h.OnProcess(&protocol.ProcessRequest{...})`
    directly with your own `Context.History`.
 7. **Health**: return `HealthOK`, version, transport `rest`,
-   protocol_version `1.0`, and your real `Capabilities` list.
+   protocol_version `1.0`, and your real `Capabilities` list. Do **not** try to
+   fill `uptime_seconds` / `active_sessions` — the SDK server fills both on the
+   way out (it owns the clock and the session store) and overwrites whatever
+   `Health()` set.
 
 ## Async work recipe (wait/resume — live-verified 2026-09-02)
 
@@ -175,12 +178,16 @@ twice. Track the last decision id per session and ignore repeats.
   `404 SESSION_NOT_FOUND "session not found: "` (not `400 INVALID_REQUEST`), and
   an out-of-enum `reason` is accepted with `200`. Malformed JSON still 400s.
   Don't read that 404 as "the session vanished" — check your own request first.
-- **Health fields are the harness's job, not the SDK's (GAP-050, 2026-09-18).**
-  `uptime_seconds` is never filled by `NewHTTPServer` (grep the package: the
-  field does not appear), and `active_sessions` only exists if your `Health()`
-  sets it — although `docs/api-reference.md` §2 shows both and
-  `integration-guide.md` §8 tells operators to wire them to an LB. Fill them
-  yourself (count your own sessions) or don't promise them.
+- **Health metrics are SDK-filled (GAP-050) — FIXED, do not code around it.**
+  It was real in v0.1.6: `NewHTTPServer` passed `Health()` through untouched, so
+  `uptime_seconds` was absent from every response and `active_sessions` existed
+  only if your `Health()` set it, while `docs/api-reference.md` §2 showed both
+  and `integration-guide.md` §8 told operators to wire them to an LB. Closed
+  2026-09-19 (on `main`, post-v0.1.6): the server now fills `uptime_seconds`
+  (age of the handler, from `NewHTTPServer`) and `active_sessions` (its own
+  session-store size) on every response — on a copy of your value, so a shared
+  `*HealthResponse` is safe — and both fields are always on the wire, including
+  `0`. Return your identity fields only; an LB rule on either metric is now safe.
 - **Session status has three reachable values, not four (GAP-051, 2026-09-18).**
   `active` on create/result, `cancelled` via `/v1/cancel`, `completed` **only
   after an `end` decision**. A turn that ends with `text.finished=true` leaves

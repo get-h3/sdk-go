@@ -1894,3 +1894,346 @@ func TestWrongMethodReturnsJSONMethodNotAllowed(t *testing.T) {
 		t.Error("expected non-empty error message")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GAP-050 — the SDK server fills uptime_seconds and active_sessions on
+// GET /v1/health; the harness owns every other health field.
+// ---------------------------------------------------------------------------
+
+// healthProbe is one GET /v1/health response in both shapes an assertion needs:
+// the decoded struct, and the RAW key map — only the raw map can tell "the
+// field is absent" apart from "the field is 0", which is exactly the regression
+// this gap is about.
+type healthProbe struct {
+	body []byte
+	raw  map[string]json.RawMessage
+	resp protocol.HealthResponse
+}
+
+// getHealth performs GET /v1/health and fails the test on a non-200 or an
+// undecodable body.
+func getHealth(t *testing.T, ts *httptest.Server) healthProbe {
+	t.Helper()
+	resp, err := http.Get(ts.URL + "/v1/health")
+	if err != nil {
+		t.Fatalf("GET /v1/health: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read GET /v1/health body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/health: expected 200, got %d (body %s)", resp.StatusCode, body)
+	}
+
+	p := healthProbe{body: body}
+	if err := json.Unmarshal(body, &p.raw); err != nil {
+		t.Fatalf("decode GET /v1/health body as a raw key map: %v (body %s)", err, body)
+	}
+	if err := json.Unmarshal(body, &p.resp); err != nil {
+		t.Fatalf("decode GET /v1/health body: %v (body %s)", err, body)
+	}
+	return p
+}
+
+// requireHealthField proves field is PRESENT on the wire (not merely decodable
+// as 0) and returns its integer value.
+func requireHealthField(t *testing.T, p healthProbe, field string) int {
+	t.Helper()
+	raw, ok := p.raw[field]
+	if !ok {
+		t.Fatalf("GET /v1/health body is missing %q — body %s", field, p.body)
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err != nil {
+		t.Fatalf("%s is not an integer: %v (raw %s)", field, err, raw)
+	}
+	return n
+}
+
+// deleteSession performs DELETE /v1/sessions/{id} and fails on a non-200.
+func deleteSession(t *testing.T, ts *httptest.Server, sid string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/v1/sessions/"+sid, nil)
+	if err != nil {
+		t.Fatalf("build DELETE /v1/sessions/%s: %v", sid, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /v1/sessions/%s: %v", sid, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE /v1/sessions/%s: expected 200, got %d", sid, resp.StatusCode)
+	}
+}
+
+// TestHealthEndpoint_SDKFilledFields (GAP-050): the SERVER owns uptime_seconds
+// and active_sessions. Both are present on the wire even when they are 0, the
+// server's values replace whatever Health() claimed for them, and every
+// harness-supplied field survives untouched.
+func TestHealthEndpoint_SDKFilledFields(t *testing.T) {
+	m := newMockHarness()
+	// Sentinels: values only the harness could have produced, so a passing
+	// assertion proves the server overwrote them.
+	m.healthResp.Status = protocol.HealthDegraded
+	m.healthResp.Version = "9.9.9"
+	m.healthResp.UptimeSeconds = 999999
+	m.healthResp.ActiveSessions = 42
+	m.healthResp.Capabilities = []protocol.DecisionType{protocol.DecisionText, protocol.DecisionEnd}
+	m.healthResp.DegradedReason = "upstream slow"
+
+	ts := httptest.NewServer(NewHTTPServer(m))
+	defer ts.Close()
+
+	p := getHealth(t, ts)
+
+	uptime := requireHealthField(t, p, "uptime_seconds")
+	sessions := requireHealthField(t, p, "active_sessions")
+	if uptime < 0 {
+		t.Errorf("uptime_seconds = %d, want >= 0", uptime)
+	}
+	if uptime >= 999999 {
+		t.Errorf("uptime_seconds = %d: the harness-supplied value was passed through instead of being filled by the server", uptime)
+	}
+	if sessions != 0 {
+		t.Errorf("active_sessions = %d, want 0 on a server with no sessions", sessions)
+	}
+
+	// Harness-supplied identity/capability fields pass through verbatim.
+	if p.resp.Status != protocol.HealthDegraded {
+		t.Errorf("status = %q, want %q", p.resp.Status, protocol.HealthDegraded)
+	}
+	if p.resp.Version != "9.9.9" {
+		t.Errorf("version = %q, want %q", p.resp.Version, "9.9.9")
+	}
+	if p.resp.Transport != "rest" {
+		t.Errorf("transport = %q, want %q", p.resp.Transport, "rest")
+	}
+	if p.resp.ProtocolVersion != "1.0" {
+		t.Errorf("protocol_version = %q, want %q", p.resp.ProtocolVersion, "1.0")
+	}
+	if p.resp.DegradedReason != "upstream slow" {
+		t.Errorf("degraded_reason = %q, want %q", p.resp.DegradedReason, "upstream slow")
+	}
+	if len(p.resp.Capabilities) != 2 ||
+		p.resp.Capabilities[0] != protocol.DecisionText || p.resp.Capabilities[1] != protocol.DecisionEnd {
+		t.Errorf("capabilities = %v, want [text end]", p.resp.Capabilities)
+	}
+
+	// Serving a request must not write into the harness's own struct: the
+	// server fills a copy, so a harness that returns one shared value is safe.
+	if m.healthResp.UptimeSeconds != 999999 || m.healthResp.ActiveSessions != 42 {
+		t.Errorf("the harness's HealthResponse was mutated: uptime=%d active=%d, want 999999/42",
+			m.healthResp.UptimeSeconds, m.healthResp.ActiveSessions)
+	}
+
+	t.Run("nil_Health_default_is_also_filled", func(t *testing.T) {
+		tsNil := httptest.NewServer(NewHTTPServer(&mockHarness{healthResp: nil}))
+		defer tsNil.Close()
+
+		p := getHealth(t, tsNil)
+		if p.resp.Status != protocol.HealthOK {
+			t.Errorf("status = %q, want the documented ok default", p.resp.Status)
+		}
+		if got := requireHealthField(t, p, "uptime_seconds"); got < 0 {
+			t.Errorf("uptime_seconds = %d, want >= 0", got)
+		}
+		if got := requireHealthField(t, p, "active_sessions"); got != 0 {
+			t.Errorf("active_sessions = %d, want 0", got)
+		}
+	})
+}
+
+// TestHealthEndpoint_ActiveSessionsTracksStore (GAP-050): active_sessions is
+// the server's own count of the sessions in its store — it rises when
+// POST /v1/process registers a session, does not double-count a repeated
+// session, and falls when DELETE /v1/sessions/{id} removes one. The harness
+// contributes nothing.
+func TestHealthEndpoint_ActiveSessionsTracksStore(t *testing.T) {
+	ts := httptest.NewServer(NewHTTPServer(newMockHarness()))
+	defer ts.Close()
+
+	steps := []struct {
+		name string
+		want int
+		act  func()
+	}{
+		{"empty store", 0, func() {}},
+		{"one session", 1, func() { postProcess(t, ts, "sess-health-1") }},
+		{"second session", 2, func() { postProcess(t, ts, "sess-health-2") }},
+		{"repeat process on an existing session", 2, func() { postProcess(t, ts, "sess-health-1") }},
+		{"delete one session", 1, func() { deleteSession(t, ts, "sess-health-1") }},
+		{"delete the last session", 0, func() { deleteSession(t, ts, "sess-health-2") }},
+	}
+	for _, step := range steps {
+		step.act()
+		p := getHealth(t, ts)
+		if got := requireHealthField(t, p, "active_sessions"); got != step.want {
+			t.Errorf("%s: active_sessions = %d, want %d (body %s)", step.name, got, step.want, p.body)
+		}
+	}
+}
+
+// TestHealthEndpoint_UptimeTracksServerAge (GAP-050): uptime_seconds is the age
+// of the SERVER (measured from NewHTTPServer), present and non-negative on the
+// first probe, and strictly larger after more than a second of serving. Only
+// controlled elapsed behaviour is asserted — never an exact value.
+func TestHealthEndpoint_UptimeTracksServerAge(t *testing.T) {
+	ts := httptest.NewServer(NewHTTPServer(newMockHarness()))
+	defer ts.Close()
+
+	// The clock starts at construction, not at the first request: by the time
+	// the first probe runs, more than a second has already elapsed.
+	time.Sleep(1100 * time.Millisecond)
+
+	first := getHealth(t, ts)
+	firstUptime := requireHealthField(t, first, "uptime_seconds")
+	if firstUptime < 1 {
+		t.Errorf("uptime_seconds = %d after >1s of serving, want >= 1 (uptime must be measured from NewHTTPServer, not from the first request)", firstUptime)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+
+	second := getHealth(t, ts)
+	secondUptime := requireHealthField(t, second, "uptime_seconds")
+	if secondUptime < firstUptime+1 {
+		t.Errorf("uptime_seconds did not advance across another >1s: first=%d second=%d", firstUptime, secondUptime)
+	}
+}
+
+// sharedHealthHarness returns the SAME *protocol.HealthResponse on every call —
+// the shape a harness has when it builds its health body once at startup. It
+// exists so the concurrency test can prove the server fills the SDK-owned
+// fields without writing into the harness's memory.
+type sharedHealthHarness struct {
+	shared *protocol.HealthResponse
+}
+
+func (h *sharedHealthHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+	return &protocol.Decision{
+		Decision:   protocol.DecisionText,
+		DecisionID: "dec-health-race",
+		Text:       &protocol.TextResp{Content: "health race", Finished: true},
+	}, nil
+}
+
+func (h *sharedHealthHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+	return &protocol.Decision{
+		Decision:   protocol.DecisionEnd,
+		DecisionID: "dec-health-race-end",
+		End:        &protocol.End{Reason: protocol.EndTaskComplete, Summary: "done"},
+	}, nil
+}
+
+func (h *sharedHealthHarness) OnCancel(req *protocol.CancelRequest) error { return nil }
+
+func (h *sharedHealthHarness) OnSessionTerminate(sessionID string) error { return nil }
+
+func (h *sharedHealthHarness) Health() *protocol.HealthResponse { return h.shared }
+
+// TestHealthEndpoint_ConcurrentProbesNoRace (GAP-050): concurrent GET /v1/health
+// probes against a harness that returns one shared HealthResponse, while
+// sessions are added and removed underneath, must be race-free — and the
+// harness's own value must come back untouched. Run under
+// `go test -race -count=1 ./harness/`.
+func TestHealthEndpoint_ConcurrentProbesNoRace(t *testing.T) {
+	const (
+		workers    = 16
+		iterations = 25
+	)
+
+	shared := &protocol.HealthResponse{
+		Status:          protocol.HealthOK,
+		Version:         "1.0.0",
+		Transport:       "rest",
+		ProtocolVersion: "1.0",
+		Capabilities:    []protocol.DecisionType{protocol.DecisionText},
+	}
+	ts := httptest.NewServer(NewHTTPServer(&sharedHealthHarness{shared: shared}))
+	defer ts.Close()
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		//nolint:gosec // loop var is captured by value via the parameter.
+		go func(i int) {
+			defer wg.Done()
+			sid := fmt.Sprintf("sess-health-race-%d", i)
+			for j := 0; j < iterations; j++ {
+				if i%2 == 0 {
+					// Probe: reads the shared health value while the server
+					// fills its own copy of it.
+					resp, err := http.Get(ts.URL + "/v1/health")
+					if err != nil {
+						errCh <- fmt.Errorf("worker %d: GET /v1/health: %w", i, err)
+						return
+					}
+					body, _ := io.ReadAll(resp.Body)
+					_ = resp.Body.Close()
+					if resp.StatusCode != http.StatusOK {
+						errCh <- fmt.Errorf("worker %d: GET /v1/health: expected 200, got %d", i, resp.StatusCode)
+						return
+					}
+					var hr protocol.HealthResponse
+					if err := json.Unmarshal(body, &hr); err != nil {
+						errCh <- fmt.Errorf("worker %d: decode health body: %w", i, err)
+						return
+					}
+					if hr.UptimeSeconds < 0 || hr.ActiveSessions < 0 {
+						errCh <- fmt.Errorf("worker %d: negative health metric: uptime=%d active=%d",
+							i, hr.UptimeSeconds, hr.ActiveSessions)
+						return
+					}
+					continue
+				}
+
+				// Churn: add and remove this worker's own session, so the
+				// counter reads the map concurrently with writes to it.
+				resp, err := http.Post(ts.URL+"/v1/process", "application/json",
+					strings.NewReader(processBody(sid)))
+				if err != nil {
+					errCh <- fmt.Errorf("worker %d: POST /v1/process: %w", i, err)
+					return
+				}
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					errCh <- fmt.Errorf("worker %d: POST /v1/process: expected 200, got %d", i, resp.StatusCode)
+					return
+				}
+
+				delReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/v1/sessions/"+sid, nil)
+				if err != nil {
+					errCh <- fmt.Errorf("worker %d: build DELETE /v1/sessions/%s: %w", i, sid, err)
+					return
+				}
+				delResp, err := http.DefaultClient.Do(delReq)
+				if err != nil {
+					errCh <- fmt.Errorf("worker %d: DELETE /v1/sessions/%s: %w", i, sid, err)
+					return
+				}
+				_, _ = io.Copy(io.Discard, delResp.Body)
+				_ = delResp.Body.Close()
+				if delResp.StatusCode != http.StatusOK {
+					errCh <- fmt.Errorf("worker %d: DELETE /v1/sessions/%s: expected 200, got %d", i, sid, delResp.StatusCode)
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Error(err)
+	}
+
+	// The harness's shared value was never written: the server filled a copy.
+	if shared.UptimeSeconds != 0 || shared.ActiveSessions != 0 {
+		t.Errorf("the harness's shared HealthResponse was mutated: uptime=%d active=%d, want 0/0",
+			shared.UptimeSeconds, shared.ActiveSessions)
+	}
+}

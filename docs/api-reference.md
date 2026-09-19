@@ -40,7 +40,10 @@ type Harness interface {
 Contract notes:
 
 - Return `(decision, nil)` or `(nil, err)` — never both.
-- A nil `Health()` result is replaced by the server with an `ok` default.
+- A nil `Health()` result is replaced by the server with an `ok` default, and the
+  server fills `uptime_seconds` and `active_sessions` on the way out whatever
+  `Health()` returned for those two fields — see
+  [§2 `GET /v1/health`](#get-v1health).
 - Decision payloads are validated by the server; a decision without
   `decision_id` gets a generated UUIDv4.
 - Three decision-level contracts the SDK server does *not* enforce (empty
@@ -96,6 +99,26 @@ Response `200`:
 
 `status` ∈ `ok` | `degraded` | `down`. `capabilities` lists the
 `protocol.DecisionType` values the harness can emit.
+
+**Who supplies each field** — your harness owns its identity and capabilities;
+the SDK server owns the two runtime metrics (GAP-050):
+
+| Field | Supplied by | Value |
+|---|---|---|
+| `status`, `version`, `transport`, `protocol_version`, `capabilities`, `degraded_reason`, `error` | your `Health()` | Passed through verbatim — the SDK adds nothing and changes nothing. |
+| `uptime_seconds` | `harness.NewHTTPServer` (SDK) | Whole seconds since the handler was constructed. Always present, including the `0` of a just-started server; whatever your `Health()` set for it is overwritten. |
+| `active_sessions` | `harness.NewHTTPServer` (SDK) | Sessions currently in the server's in-memory store — added by `POST /v1/process`, removed by `DELETE /v1/sessions/{id}`; any status. Always present, including `0`; whatever your `Health()` set for it is overwritten. |
+
+Consequences worth knowing:
+
+- You do **not** track uptime or session counts yourself — a `Health()` that
+  returns only identity fields is complete, and an LB rule on
+  `uptime_seconds` / `active_sessions` can never read an absent field.
+- A `nil` `Health()` result (server substitutes the `ok` default) is filled the
+  same way.
+- The server fills these two fields on a **copy** of your response, so a
+  `Health()` that returns one shared `*HealthResponse` is safe under concurrent
+  probes — your struct is never mutated.
 
 ### `POST /v1/process`
 
@@ -662,8 +685,8 @@ type HealthResponse struct {
     Version         string         `json:"version"`
     Transport       string         `json:"transport,omitempty"`
     ProtocolVersion string         `json:"protocol_version,omitempty"`
-    UptimeSeconds   int            `json:"uptime_seconds,omitempty"`
-    ActiveSessions  int            `json:"active_sessions,omitempty"`
+    UptimeSeconds   int            `json:"uptime_seconds"`  // SDK-filled: always on the wire
+    ActiveSessions  int            `json:"active_sessions"` // SDK-filled: session-store size
     Capabilities    []DecisionType `json:"capabilities,omitempty"`
     DegradedReason  string         `json:"degraded_reason,omitempty"`
     Error           string         `json:"error,omitempty"`
