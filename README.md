@@ -8,6 +8,9 @@ Go SDK for building [H3](https://github.com/get-h3/h3)-compliant agent harnesses
 
 ## Install
 
+Requires a Go toolchain — **1.22+**, matching the badge above. If you do not have
+one yet, install it first: <https://go.dev/dl/>.
+
 ```bash
 go get github.com/get-h3/sdk-go
 ```
@@ -124,6 +127,13 @@ Copy it as-is: `identity.platform` and `identity.chat_id` are required by the wi
 contract, and `message.role` must be `user` — omitting any of the three returns HTTP
 400 `INVALID_REQUEST`.
 
+**First run compiles before it serves.** `go run main.go` builds the binary before the
+listener binds, so the first `curl`s can report `HTTP:000` / `connection refused` while
+the compile runs — seconds on a warm build cache, longer cold. Let the compile finish, or
+poll `curl -sf http://127.0.0.1:9191/v1/health` until it answers 200, before step 1.
+(The bundled examples additionally log their listen address on startup — this quickstart's
+`main` does not.)
+
 ```bash
 # 1. Health check (HTTP 200)
 curl -s http://127.0.0.1:9191/v1/health
@@ -195,6 +205,20 @@ resolves `PORT` (default `9191`) for the address you pass to `http.ListenAndServ
 `harness.Serve(addr, h)` reports a bind collision with a hint naming the `PORT` override
 instead of a bare `address already in use`.
 
+## Verify compliance (46/46)
+
+The quickstart harness above is the compliance reference — [`examples/echo`](./examples/echo/)
+is the same logic. To reproduce the number yourself, install the battery and run it
+against the live endpoint:
+
+```bash
+pip install git+https://github.com/get-h3/shim   # provides the `h3-test` CLI
+h3-test --endpoint http://127.0.0.1:9191         # -> TOTAL 46/46 PASSED, exit 0
+```
+
+The battery is black-box (HTTP only), so the same command validates a harness built
+with any SDK. Zero-to-production walkthrough: [docs/integration-guide.md](docs/integration-guide.md).
+
 ## Package Structure
 
 | Package | Description |
@@ -210,6 +234,28 @@ instead of a bare `address already in use`.
 - [`examples/conformance/`](./examples/conformance/) — Conformance harness: full agent loop (tool_call → result → text → end) for h3-test validation.
 - [`examples/llm-roundtrip/`](./examples/llm-roundtrip/) — Deliberator harness: the `llm_call` round trip (process → llm_call → result → llm_call → result → text VERDICT → end), with a scripted fake-Hermes client.
 - [`examples/consensus/`](./examples/consensus/) — Consensus reference integration: demonstrates H3 + Consensus for multi-model deliberation.
+
+### Running an example
+
+Where you build an example from decides whether it needs its own module:
+
+- **Inside a clone** — the repository's root module (`module github.com/get-h3/sdk-go`)
+  covers every example directory, so it builds as-is with no `go mod init`:
+
+  ```bash
+  cd examples/minimal && go build .   # exit 0
+  ```
+
+- **Copied out of the clone** into your own directory — the copy sits outside that
+  module, so give it one and pull the SDK in first:
+
+  ```bash
+  go mod init my-module
+  go get github.com/get-h3/sdk-go
+  go build .                          # exit 0
+  ```
+
+Either path needs a Go toolchain ([1.22+](https://go.dev/dl/)) installed first.
 
 ## Documentation
 
@@ -229,7 +275,7 @@ make all          # fmt + vet + build + test-short
 ```
 
 - **Quality gate:** GitReins mandatory (secrets, build, lint, tests). Run `gitreins guard` before committing.
-- **Pre-release check:** Must pass `h3-test` from [get-h3/shim](https://github.com/get-h3/shim).
+- **Pre-release check:** Must pass `h3-test` from [get-h3/shim](https://github.com/get-h3/shim) — install and run commands under [Verify compliance](#verify-compliance-4646) above.
 
 ## Reference
 
