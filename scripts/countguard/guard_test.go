@@ -30,6 +30,11 @@ import (
 //	         report quotes one without a point-in-time banner);
 //	exit 2 — the guard is misconfigured (missing / malformed canonical counts,
 //	         an unreadable suite source, a non-numeric sibling count).
+//	exit 0 with a BATTERY PARITY NOT VERIFIED caveat (GAP-053) — the sibling
+//	         shim count is absent: the guard still passes (a fresh clone or a
+//	         CI checkout has no ../shim) but the loud status AND the final
+//	         summary say parity was not checked; H3_SDK_REQUIRE_SHIM_PARITY=1
+//	         turns that absence into exit 2.
 //
 // Retired counts are assembled from digit fragments at runtime so this file's
 // own source carries none of them: the guard sweeps tracked *.go files too, and
@@ -137,8 +142,8 @@ func write(t *testing.T, path, content string) string {
 
 // scratchTree builds a self-contained scan root the guard can police without
 // touching the real repo: N synthetic Go tests, a canonical count file, and an
-// absent sibling shim count (so battery parity is reported as skipped and every
-// exit code below is driven by the check under test).
+// absent sibling shim count (so battery parity is reported as NOT VERIFIED and
+// every exit code below is driven by the check under test).
 func scratchTree(t *testing.T, suite int) (root, canon string) {
 	t.Helper()
 	root = t.TempDir()
@@ -203,18 +208,109 @@ func TestLiveSuiteCountMatchesCanonical(t *testing.T) {
 }
 
 func TestShimBatteryAgreesWhenCheckoutIsPresent(t *testing.T) {
-	shimCanon := filepath.Join(repoRoot(), "..", "shim", "scripts", "test-count.txt")
-	raw, err := os.ReadFile(shimCanon)
-	if err != nil {
-		t.Skipf("no sibling shim checkout at %s", shimCanon)
-	}
 	counts := readCanonical(t)
-	got := strings.TrimSpace(string(raw))
-	want := strconv.Itoa(counts[batteryKey])
-	if got != want {
-		t.Fatalf("shim canonical battery is %q but this repo pins %q", got, want)
-	}
+
+	t.Run("real sibling checkout agrees", func(t *testing.T) {
+		// The only environment-dependent half: when the actual sibling checkout
+		// sits at ../shim, its canonical count must agree with ours. In a
+		// worktree (or a CI checkout) the default ../shim path resolves to
+		// nothing, so this subtest skips — the branch behaviour below is driven
+		// hermetically and runs everywhere.
+		shimCanon := filepath.Join(repoRoot(), "..", "shim", "scripts", "test-count.txt")
+		raw, err := os.ReadFile(shimCanon)
+		if err != nil {
+			t.Skipf("no sibling shim checkout at %s", shimCanon)
+		}
+		got := strings.TrimSpace(string(raw))
+		want := strconv.Itoa(counts[batteryKey])
+		if got != want {
+			t.Fatalf("shim canonical battery is %q but this repo pins %q", got, want)
+		}
+	})
+
+	// A shim count file that is guaranteed present, equal to our canonical
+	// battery — drives the "sibling present and equal" branch on any host.
+	presentShim := write(t, filepath.Join(t.TempDir(), "shim-count.txt"),
+		strconv.Itoa(counts[batteryKey])+"\n")
+
+	t.Run("present and equal: exit 0, agreement line printed", func(t *testing.T) {
+		code, stdout, stderr := runGuard(t, map[string]string{
+			"H3_SDK_SHIM_COUNT_FILE": presentShim,
+		})
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+		}
+		if !strings.Contains(stdout, "battery agrees with the shim") {
+			t.Errorf("guard did not report the agreement line:\n%s", stdout)
+		}
+		if !strings.Contains(stdout, "PASS — canonical battery") {
+			t.Errorf("summary lost its plain PASS form:\n%s", stdout)
+		}
+	})
+
+	t.Run("require knob: absent sibling exits 2 naming file and knob", func(t *testing.T) {
+		// GAP-053: monorepo users and umbrella `make verify-counts` set
+		// H3_SDK_REQUIRE_SHIM_PARITY=1 to fail fast when the sibling count is
+		// absent — misconfiguration (exit 2), never a green pass.
+		shim := filepath.Join(t.TempDir(), "absent-shim-count.txt")
+		code, stdout, stderr := runGuard(t, map[string]string{
+			"H3_SDK_SHIM_COUNT_FILE": shim,
+			requireKnob:              "1",
+		})
+		if code != 2 {
+			t.Fatalf("exit = %d, want 2 (stderr: %s)", code, stderr)
+		}
+		if !strings.Contains(stderr, "shim battery parity not verifiable") {
+			t.Errorf("stderr does not name the failure:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, shim) {
+			t.Errorf("stderr does not name the missing file:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, requireKnob) {
+			t.Errorf("stderr does not name the env knob:\n%s", stderr)
+		}
+		if strings.Contains(stdout, "PASS") {
+			t.Errorf("a demanded-but-missing parity must not PASS:\n%s", stdout)
+		}
+	})
+
+	t.Run("present but wrong: still exit 1", func(t *testing.T) {
+		shim := write(t, filepath.Join(t.TempDir(), "wrong-shim-count.txt"),
+			strconv.Itoa(counts[batteryKey]-1)+"\n")
+		code, _, stderr := runGuard(t, map[string]string{
+			"H3_SDK_SHIM_COUNT_FILE": shim,
+		})
+		if code != 1 {
+			t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+		}
+		if !strings.Contains(stderr, "battery drift") {
+			t.Errorf("stderr does not name the drift:\n%s", stderr)
+		}
+	})
+
+	t.Run("require knob with the sibling present is a plain pass", func(t *testing.T) {
+		// The demand must not alter the outcome once parity IS verified.
+		code, stdout, stderr := runGuard(t, map[string]string{
+			"H3_SDK_SHIM_COUNT_FILE": presentShim,
+			requireKnob:              "1",
+		})
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+		}
+		if !strings.Contains(stdout, "battery agrees with the shim") {
+			t.Errorf("agreement line missing with the knob set:\n%s", stdout)
+		}
+	})
 }
+
+// VERIFIED_ASSEMBLED and REQUIRE_KNOB are assembled from fragments because the
+// guard sweeps tracked *.go files: a literal here would either trip check (d)
+// itself or (for the knob) leak its name into a file checked only for counts.
+// GAP-053: keep the loud status and the knob name stable — the tests below pin
+// both, and the acceptance runs grep for them.
+const verifiedAssembled = "VER" + "IFIED"
+
+const requireKnob = "H3_SDK_REQUIRE" + "_SHIM_PARITY"
 
 func TestGuardPassesOnTheCurrentTree(t *testing.T) {
 	code, stdout, stderr := runGuard(t, nil)
@@ -230,6 +326,31 @@ func TestGuardPassesOnTheCurrentTree(t *testing.T) {
 			t.Errorf("guard summary does not name the canonical count %s:\n%s", want, stdout)
 		}
 	}
+
+	t.Run("absent sibling is loud, not a silent green", func(t *testing.T) {
+		// GAP-053: with no sibling shim count, the guard still exits 0 (CI
+		// checkouts have no ../shim) but the output must be impossible to
+		// mistake for "parity checked and agreed".
+		shim := filepath.Join(t.TempDir(), "absent-shim-count.txt")
+		code, stdout, stderr := runGuard(t, map[string]string{
+			"H3_SDK_SHIM_COUNT_FILE": shim,
+		})
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+		}
+		if !strings.Contains(stdout, "parity NOT "+verifiedAssembled) {
+			t.Errorf("stdout lacks the loud NOT VERIFIED status:\n%s", stdout)
+		}
+		if !strings.Contains(stdout, shim) {
+			t.Errorf("the status does not name the path that was checked:\n%s", stdout)
+		}
+		if strings.Contains(stdout, "battery agrees") {
+			t.Errorf("guard claims parity agreement with an absent sibling:\n%s", stdout)
+		}
+		if !strings.Contains(stdout, "battery parity NOT "+verifiedAssembled) {
+			t.Errorf("final PASS line does not carry the NOT VERIFIED caveat:\n%s", stdout)
+		}
+	})
 }
 
 func TestGuardStaticDerivationMatchesLiveDerivation(t *testing.T) {

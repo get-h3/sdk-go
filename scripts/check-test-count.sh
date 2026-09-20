@@ -29,8 +29,15 @@
 #   c. battery parity        — when a sibling shim checkout is present its
 #                              scripts/test-count.txt must agree with `battery=`,
 #                              else exit 1 (the battery moved and this repo's
-#                              prose is now stale). No sibling checkout → NOTE
-#                              and continue: this repo must not depend on one.
+#                              prose is now stale). No sibling checkout → a loud
+#                              "battery parity NOT VERIFIED" caveat and exit 0:
+#                              a fresh clone or a CI checkout has no ../shim and
+#                              this repo must not depend on one — but the pass
+#                              must be impossible to mistake for a checked one.
+#                              Set H3_SDK_REQUIRE_SHIM_PARITY=1 to make that
+#                              absence a misconfiguration (exit 2) instead: the
+#                              umbrella checkout and monorepo users can then
+#                              fail fast.
 #   d. retired-literal sweep — no tracked current-state surface may still
 #                              advertise a RETIRED battery count (43/44/45 in
 #                              count-shaped forms, plus any "N/44"-style fraction
@@ -56,13 +63,21 @@
 #   * any file whose head (first 25 lines) carries the same point-in-time
 #     banner — a document that declares itself a historical record.
 #
-# Exit codes: 0 = pass, 1 = drift, 2 = guard misconfigured (missing/bad inputs).
+# Exit codes: 0 = pass — with a loud "battery parity NOT VERIFIED" caveat on
+#             every summary line when the sibling shim count is absent;
+#             1 = drift; 2 = guard misconfigured (missing/bad inputs, or
+#             H3_SDK_REQUIRE_SHIM_PARITY=1 set while the sibling count is
+#             absent/unreadable).
 # Dependencies: POSIX sh + coreutils (git, grep, sed, awk, wc). No venv, no
 # network. The Go toolchain is optional (used for the live count only).
 #
 # Overrides (used by scripts/countguard/guard_test.go to drive every branch
 # hermetically): H3_SDK_COUNT_FILE, H3_SDK_SCAN_ROOT, H3_SDK_SHIM_COUNT_FILE,
-# H3_SDK_LIVE (1 = prefer the live Go count, 0 = force the static scan).
+# H3_SDK_LIVE (1 = prefer the live Go count, 0 = force the static scan),
+# H3_SDK_REQUIRE_SHIM_PARITY (1 = a missing sibling shim count is a
+# misconfiguration: exit 2 instead of the pass-with-caveat; unset or 0 = the
+# CI-safe default that still exits 0 and says loudly that parity was NOT
+# verified).
 
 set -eu
 
@@ -155,6 +170,7 @@ echo "check-test-count: suite agrees ($COUNT tests via $MODE)"
 
 # ---- (c) battery parity against the sibling shim's canonical count --------
 SHIM_CANON=${H3_SDK_SHIM_COUNT_FILE:-$ROOT/../shim/scripts/test-count.txt}
+PARITY_VERIFIED=0
 if [ -f "$SHIM_CANON" ]; then
     SHIM_BATTERY=$(tr -d ' \t\r\n' < "$SHIM_CANON")
     case "$SHIM_BATTERY" in
@@ -172,10 +188,27 @@ if [ -f "$SHIM_CANON" ]; then
         echo "      battery=$SHIM_BATTERY and sweep every prose count the guard names." >&2
         exit 1
     fi
+    PARITY_VERIFIED=1
     echo "check-test-count: battery agrees with the shim ($BATTERY tests)"
 else
-    echo "check-test-count: NOTE — no shim canonical count at $SHIM_CANON;"
-    echo "                  battery parity skipped (local canonical battery=$BATTERY)."
+    # GAP-053: a fresh clone or a CI checkout has no ../shim, so the pass must
+    # stay (an unconditional exit here would red-line every CI run) — but it
+    # must be impossible to read as "parity checked and agreed".
+    echo "check-test-count: ============================================================"
+    echo "check-test-count: WARNING — battery parity NOT VERIFIED (GAP-053): no shim"
+    echo "check-test-count: canonical count at $SHIM_CANON — the battery=$BATTERY"
+    echo "check-test-count: claim was checked against this repo only, not against"
+    echo "check-test-count: the shim's live battery count."
+    echo "check-test-count: set H3_SDK_REQUIRE_SHIM_PARITY=1 to fail (exit 2) instead."
+    echo "check-test-count: ============================================================"
+    if [ "${H3_SDK_REQUIRE_SHIM_PARITY:-0}" = "1" ]; then
+        echo "FAIL: shim battery parity not verifiable: no count file at $SHIM_CANON" >&2
+        echo "      H3_SDK_REQUIRE_SHIM_PARITY=1 demands the sibling shim count," >&2
+        echo "      so an absent/unreadable file is a misconfiguration (exit 2)." >&2
+        echo "      Fix: run from the umbrella checkout (../shim present) or point" >&2
+        echo "      H3_SDK_SHIM_COUNT_FILE at the shim's scripts/test-count.txt." >&2
+        exit 2
+    fi
 fi
 
 # ---- (d)+(e) sweeps over tracked current-state surfaces --------------------
@@ -375,5 +408,9 @@ if [ "$UNBANNERED" -ne 0 ]; then
 fi
 
 # ---- (g) PASS summary ------------------------------------------------------
-echo "check-test-count: PASS — canonical battery=$BATTERY, suite=$SUITE; current-state prose agrees"
+if [ "$PARITY_VERIFIED" = "1" ]; then
+    echo "check-test-count: PASS — canonical battery=$BATTERY, suite=$SUITE; current-state prose agrees"
+else
+    echo "check-test-count: PASS — canonical battery=$BATTERY, suite=$SUITE; battery parity NOT VERIFIED (no shim count at $SHIM_CANON); current-state prose agrees"
+fi
 exit 0

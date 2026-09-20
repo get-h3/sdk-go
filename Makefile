@@ -7,6 +7,11 @@ build:
 # (scripts/test-count.txt) → live suite parity (`go test ./... -list '^Test'`)
 # → battery parity against the sibling shim checkout → stale-literal sweep with
 # explicit historical exemptions. Exit 0 pass / 1 drift / 2 guard misconfigured.
+# GAP-053 — with no sibling shim count (any fresh clone or CI checkout) the
+# pass is loud: "battery parity NOT VERIFIED" on its own WARNING block and in
+# the final PASS line. Set H3_SDK_REQUIRE_SHIM_PARITY=1 to make that absence
+# exit 2 (umbrella/monorepo runs can then fail fast); with ../shim present the
+# behaviour is unchanged.
 verify-counts:
 	sh scripts/check-test-count.sh
 
