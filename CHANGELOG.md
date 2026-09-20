@@ -2,6 +2,20 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.7] — 2026-09-20
+
+### Fixed
+- `POST /v1/cancel` validates its request before touching the session store: a valid-JSON body missing `session_id` now returns `400` `{error: {code: INVALID_REQUEST, message: "session_id is required"}}`, and an out-of-enum or missing `reason` returns `400` naming the allowed values (`user_interrupt`, `timeout`, `system`) — instead of a phantom `404 SESSION_NOT_FOUND`. Validation happens before the lookup, so a malformed cancel can never read as a vanished session; a valid body with a live session still cancels (`200`), and an unknown session still gets `404 SESSION_NOT_FOUND`. (GAP-048)
+- `POST /v1/result` correlates `decision_id` with the session's in-flight decision before `OnResult` runs: replaying the just-resolved decision id returns `400 INVALID_REQUEST` ("already been resolved for session"), and any other mismatched id returns `400 INVALID_REQUEST` ("does not match the session's in-flight decision") — closing the stale/duplicate/invented-decision-id hole. `ResultRequest.Validate()` now requires `session_id`, `decision_id`, and `result.type`. No new wire shapes were introduced. (GAP-049)
+- `GET /v1/health` metrics are populated: `uptime_seconds` counts from process start and `active_sessions` reflects the live session-store size, instead of always reporting `0`. (GAP-050)
+
+### Added
+- Every example reads `PORT` and starts via `harness.ListenAddr()`/`harness.Serve()`: unset/empty/blank falls back to the default `9191`, and an already-bound port is reported with the address plus the `PORT` override hint instead of a bare listen error; conformance, consensus and minimal no longer hardcode `:9191`, and the consensus banner prints the resolved address. (`harness/listen.go` adds `PortFromEnv`, `ListenAddr`, `Serve`, `AddrInUseMessage`, `PortEnv`, `DefaultPort`.) (DF-H3-SDK-GO-FOREMAN-4)
+- The count guard batches its per-file shell spawns into a single `grep` invocation, cutting `scripts/check-test-count.sh` runtime while preserving identical verdicts. (GAP-057)
+
+### Docs
+- AGENTS.md quickstart `main()` uses the `PORT`-aware `harness.ListenAddr()`/`harness.Serve()` pair, matching `examples/echo`.
+- `POST /v1/result` decision-contract wording documented across the README, integration guide, and API reference. (GAP-044)
 ## [0.1.6] — 2026-09-18
 
 ### Fixed
