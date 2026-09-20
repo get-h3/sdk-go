@@ -45,7 +45,7 @@ curl -s http://localhost:9293/v1/result -d '{
 Response — the completed work as finished text:
 
 ```json
-{"decision":"text","decision_id":"text-001","text":{"content":"background job wait-001 completed: computed result-1729","finished":true}}
+{"decision":"text","decision_id":"text-002","text":{"content":"background job wait-001 completed: computed result-1729","finished":true}}
 ```
 
 If you post before the work finished, the harness returns another short
@@ -56,7 +56,7 @@ If you post before the work finished, the harness returns another short
 ```bash
 curl -s http://localhost:9293/v1/result -d '{
   "session_id": "sess-1",
-  "decision_id": "text-001",
+  "decision_id": "text-002",
   "result": {"type": "text_sent", "success": true}
 }'
 ```
@@ -64,7 +64,7 @@ curl -s http://localhost:9293/v1/result -d '{
 Response:
 
 ```json
-{"decision":"end","decision_id":"end-001","end":{"reason":"task_complete","summary":"wait/resume task complete: background result delivered"}}
+{"decision":"end","decision_id":"end-003","end":{"reason":"task_complete","summary":"wait/resume task complete: background result delivered"}}
 ```
 
 ## Concurrency notes
