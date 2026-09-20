@@ -1,0 +1,36 @@
+{
+  "tick_id": "h3-sdk-go-foreman-2026-09-20-18-04-04",
+  "tick_number": 260,
+  "created_at": "2026-09-20T13:15:00-05:00",
+  "project": "h3-sdk-go",
+  "workdir": "/home/kara/get-h3/sdk-go",
+  "budget": 12,
+  "workers": [
+    {
+      "task_id": "GAP-042",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-GAP-042",
+      "branch": "wt/GAP-042",
+      "base_sha": "c2e25a0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/sdkgo_brief_gap042_t260.md",
+      "lane_probe": "LANE_OK 20260920_130854_b62eff"
+    },
+    {
+      "task_id": "GAP-054",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-GAP-054",
+      "branch": "wt/GAP-054",
+      "base_sha": "c2e25a0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/sdkgo_brief_gap054_t260.md",
+      "lane_probe": "LANE_OK 20260920_130854_b62eff"
+    }
+  ],
+  "independence_check": "GAP-042 touches examples/wait-resume/ only; GAP-054 touches docs/api-reference.md only; both rows depend_on=[]; no shared files -> mutually independent.",
+  "serial_work": [
+    {"task_id": "GAP-041", "mode": "foreman-direct (one-line doc fix in main tree, committed pre-wave)"}
+  ],
+  "merge_order": ["GAP-054", "GAP-042", "GAP-041+board commit"],
+  "merge_note": "Each merge re-runs the gate battery; api-reference.md is conflict-free (042 does not touch it; 054 edits it pre-042 merge; main-tree GAP-041 edit lands in the final board commit)."
+}
