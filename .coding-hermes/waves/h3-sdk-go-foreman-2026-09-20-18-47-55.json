@@ -1,0 +1,50 @@
+{
+  "tick_id": "h3-sdk-go-foreman-2026-09-20-18-47-55",
+  "tick_number": 261,
+  "created_at": "2026-09-20T14:00:00-05:00",
+  "project": "h3-sdk-go",
+  "workdir": "/home/kara/get-h3/sdk-go",
+  "recovery": {
+    "recovered_wave_tick": "h3-sdk-go-foreman-2026-09-20-18-04-04",
+    "workers": [
+      {"task_id": "GAP-042", "branch": "wt/GAP-042", "sha": "a776335", "judge": "PASS 82078d91", "merge": "MERGED 5634d3a"},
+      {"task_id": "GAP-054", "branch": "wt/GAP-054", "sha": "00b6615", "judge": "PASS 84890c87", "merge": "MERGED 287076d"}
+    ],
+    "result": "already recovered by tick #260 (commit c2ff54f); both branches merged, worktrees reaped, board rows complete, CI green on c2ff54f",
+    "action_taken": "none needed — verified merge state, worktree list (none left), board rows complete, judge verdicts recorded"
+  },
+  "budget": 12,
+  "workers": [
+    {
+      "task_id": "GAP-053",
+      "worktree": "/home/kara/worktrees/sdk-go-GAP-053",
+      "branch": "wt/GAP-053",
+      "base_sha": "c2ff54f",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_brief_gap053_t261.md"
+    },
+    {
+      "task_id": "GAP-051",
+      "worktree": "/home/kara/worktrees/sdk-go-GAP-051",
+      "branch": "wt/GAP-051",
+      "base_sha": "c2ff54f",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_brief_gap051_t261.md"
+    },
+    {
+      "task_id": "DF-README-CONSUMER",
+      "tasks_covered": ["DF-H3-SDK-GO-FOREMAN-3", "DF-H3-SDK-GO-FOREMAN-5", "DF-H3-SDK-GO-FOREMAN-7", "DF-H3-SDK-GO-FOREMAN-10"],
+      "worktree": "/home/kara/worktrees/sdk-go-README-CONSUMER",
+      "branch": "wt/README-CONSUMER",
+      "base_sha": "c2ff54f",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_brief_readme_t261.md"
+    }
+  ],
+  "independence_check": "GAP-053 touches scripts/check-test-count.sh + scripts/countguard/ only; GAP-051 touches docs/api-reference.md + docs/integration-guide.md only; README-CONSUMER touches README.md + docs/examples.md only. Three disjoint file sets, no depends_on edges between the rows. Middle-out: two doc/data bands and one script band, no shared internal package.",
+  "merge_order": ["GAP-053", "GAP-051", "README-CONSUMER", "board bookkeeping"],
+  "merge_note": "Docs-only branches merge trivially; the scripts branch re-runs countguard + the full guard on the merged tree. Gate after EACH merge."
+}

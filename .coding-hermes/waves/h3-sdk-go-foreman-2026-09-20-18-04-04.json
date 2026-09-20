@@ -2,6 +2,7 @@
   "tick_id": "h3-sdk-go-foreman-2026-09-20-18-04-04",
   "tick_number": 260,
   "created_at": "2026-09-20T13:15:00-05:00",
+  "finished_at": "2026-09-20T13:38:30-05:00",
   "project": "h3-sdk-go",
   "workdir": "/home/kara/get-h3/sdk-go",
   "budget": 12,
@@ -14,7 +15,12 @@
       "model": "glm-5.3-flash",
       "provider": "zai-glm",
       "brief": "/tmp/sdkgo_brief_gap042_t260.md",
-      "lane_probe": "LANE_OK 20260920_130854_b62eff"
+      "lane_probe": "LANE_OK 20260920_130854_b62eff",
+      "commit": "a776335",
+      "judge": "PASS 82078d91 (after one FAIL — worker README decision_ids did not match the harness counter; fixed in e08792b)",
+      "merge": "MERGED 5634d3a",
+      "worktree_removed": true,
+      "branch_deleted": true
     },
     {
       "task_id": "GAP-054",
@@ -24,7 +30,12 @@
       "model": "glm-5.3-flash",
       "provider": "zai-glm",
       "brief": "/tmp/sdkgo_brief_gap054_t260.md",
-      "lane_probe": "LANE_OK 20260920_130854_b62eff"
+      "lane_probe": "LANE_OK 20260920_130854_b62eff",
+      "commit": "00b6615",
+      "judge": "PASS 84890c87",
+      "merge": "MERGED 287076d",
+      "worktree_removed": true,
+      "branch_deleted": true
     }
   ],
   "independence_check": "GAP-042 touches examples/wait-resume/ only; GAP-054 touches docs/api-reference.md only; both rows depend_on=[]; no shared files -> mutually independent.",
@@ -32,5 +43,7 @@
     {"task_id": "GAP-041", "mode": "foreman-direct (one-line doc fix in main tree, committed pre-wave)"}
   ],
   "merge_order": ["GAP-054", "GAP-042", "GAP-041+board commit"],
-  "merge_note": "Each merge re-runs the gate battery; api-reference.md is conflict-free (042 does not touch it; 054 edits it pre-042 merge; main-tree GAP-041 edit lands in the final board commit)."
+  "merge_note": "Each merge re-ran the gate battery; api-reference.md is conflict-free (042 does not touch it; 054 edits it pre-042 merge; main-tree GAP-041 edit lands in the final board commit).",
+  "recovery_verified_by": "h3-sdk-go-foreman-2026-09-20-18-47-55 (tick #261)",
+  "recovery_result": "Complete — both branches merged into main (merge commits 287076d / 5634d3a, both ancestors of c2ff54f), worktrees already reaped (git worktree list shows only the main checkout), branches deleted (git branch --merged main lists neither), board rows GAP-042/GAP-054 status=complete with judge PASS, CI green on c2ff54f. No fixup work was needed."
 }
