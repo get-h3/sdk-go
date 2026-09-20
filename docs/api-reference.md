@@ -142,7 +142,8 @@ Request — required fields marked **bold** (the only ones the battery guarantee
 ```
 
 Validation (else `400 INVALID_REQUEST`): `session_id` non-empty,
-`message.role` non-empty, `identity.platform` non-empty, `identity.chat_id`
+`message.role` equal to `"user"` (anything else — e.g. `"system"` — is
+rejected), `identity.platform` non-empty, `identity.chat_id`
 non-empty. Everything else is optional.
 
 Response `200` — a Decision (see [§4 Decision types](#4-decision-types)):
