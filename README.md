@@ -208,6 +208,7 @@ instead of a bare `address already in use`.
 - [`examples/minimal/`](./examples/minimal/) — Minimal harness: responds "Hello from H3 Go SDK!" on every message.
 - [`examples/echo/`](./examples/echo/) — Echo harness: echoes back the user's message content.
 - [`examples/conformance/`](./examples/conformance/) — Conformance harness: full agent loop (tool_call → result → text → end) for h3-test validation.
+- [`examples/llm-roundtrip/`](./examples/llm-roundtrip/) — Deliberator harness: the `llm_call` round trip (process → llm_call → result → llm_call → result → text VERDICT → end), with a scripted fake-Hermes client.
 - [`examples/consensus/`](./examples/consensus/) — Consensus reference integration: demonstrates H3 + Consensus for multi-model deliberation.
 
 ## Documentation

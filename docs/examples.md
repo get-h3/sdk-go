@@ -1,6 +1,6 @@
 # H3 Go SDK — Examples
 
-A tour of the four example harnesses, what each demonstrates, and which one to
+A tour of the five example harnesses, what each demonstrates, and which one to
 reach for.
 
 ## Comparison
@@ -10,9 +10,10 @@ reach for.
 | `minimal` | [`examples/minimal/main.go`](../examples/minimal/main.go) | Smallest possible harness — fixed greeting text, ends on any result | ✔ (text-only loop) | Absolute starting point; skeleton for your own harness |
 | `echo` | [`examples/echo/main.go`](../examples/echo/main.go) | Echo loop with streaming awareness (`do not finish`), history echo, result tracking | ✔ **Compliance reference** — same code as the README quickstart | Learning the loop contract; baseline for battery runs |
 | `conformance` | [`examples/conformance/main.go`](../examples/conformance/main.go) + [`testbed/conformance.go`](../testbed/conformance.go) | Keyword-triggered full agent loop exercising **five of the six decision types** (`tool_call`, `llm_call`, `text`, `delegate`, `end`); `wait` is advertised in capabilities but never returned | ✔ (purpose-built for h3-test) | Demonstrating/validating the full protocol surface against the battery |
+| `llm-roundtrip` | [`examples/llm-roundtrip/main.go`](../examples/llm-roundtrip/main.go) + [`fake_hermes.py`](../examples/llm-roundtrip/fake_hermes.py) | The **`llm_call` round trip**: process → `llm_call` (model A) → result → `llm_call` (model B, critique) → result → `text` verdict (`finished=true`) → result → `end`; plus the no-models and streaming branches | ✔ (with `fake_hermes.py` driving the loop) | Asking Hermes for LLM completions; the reference state machine for a multi-round deliberation |
 | `consensus` | [`examples/consensus/main.go`](../examples/consensus/main.go) | Real-world integration: H3 harness driving the Consensus REST API for multi-model deliberation | ✔ (with Consensus running; falls back to echo) | Template for connecting an external agent backend to H3 |
 
-All four serve through `harness.NewHTTPServer` + the shared `harness.Serve` helper,
+All five serve through `harness.NewHTTPServer` + the shared `harness.Serve` helper,
 and **every example honors the `PORT` environment variable** (default `9191`), so two
 examples can run side by side and a port collision is reported with the address and a
 hint naming the override:
@@ -23,7 +24,7 @@ PORT=9293 go run ./examples/conformance/
 h3-test --endpoint http://127.0.0.1:9293
 ```
 
-With no `PORT` set, all four still serve on `:9191` as before.
+With no `PORT` set, all five still serve on `:9191` as before.
 
 ## 1. minimal — the smallest compliant harness
 
@@ -94,7 +95,70 @@ battery's own conformance behaviour is derived from, S04 §6), or when you need 
 harness that can *demonstrate* `tool_call`/`llm_call`/`delegate`/`wait` paths
 without wiring a real backend.
 
-## 4. consensus — real-world integration
+## 4. llm-roundtrip — asking Hermes for completions
+
+`examples/llm-roundtrip/main.go` + [`examples/llm-roundtrip/fake_hermes.py`](../examples/llm-roundtrip/fake_hermes.py)
+
+The reference for the one decision type that needs a *round trip*: the harness
+asks Hermes to run a model, Hermes runs it, and hands the completion back. Two
+models deliberate — the first drafts, the second critiques, the harness
+synthesises:
+
+```
+POST /v1/process             -> llm_call   (model A: draft an answer)
+POST /v1/result llm_response -> llm_call   (model B: critique the draft)
+POST /v1/result llm_response -> text       ("VERDICT: …", finished=true)
+POST /v1/result text_sent    -> end        (reason task_complete)
+```
+
+What it shows:
+
+- **Models come from the request.** `context.models` is the session's capability
+  list. With `models: []` the harness must NOT return `llm_call` — a model
+  nobody offered is a hallucinated model — so it falls back to plain `text`. The
+  same rule drives the two-model case: model A first, model B for the critique,
+  the only offered model re-used when just one exists.
+- **History never shrinks.** The session history is seeded once from
+  `context.history`, every user turn is appended, and a snapshot is attached to
+  *every* decision — including the result-driven ones, which is where a
+  hand-rolled loop usually drops it.
+- **Streaming is a request.** A message containing `do not finish` gets
+  `finished: false`; the NEXT result flips it to `finished: true` instead of
+  ending the session.
+- **Per-session state is mutex-guarded.** The session map, the answer collection
+  and the step transitions all live behind one lock, so concurrent requests for
+  the same session are safe.
+- **Result bookkeeping.** Each hop is driven by `POST /v1/result`; the harness
+  records what came back and only ends once the verdict has been delivered.
+
+The example ships its own tester — a scripted fake-Hermes client that plays the
+part of Hermes (it "runs" the model each `llm_call` names) and asserts the
+contracts above: the verdict text, history that never shrinks, the streaming
+flip, the no-models fallback, the `completed` session, and `DELETE` → `404`.
+
+```bash
+# terminal 1 — the harness (PORT override: this example owns :9291, not :9191)
+PORT=9291 go run ./examples/llm-roundtrip/
+
+# terminal 2 — the scripted fake-Hermes client, same port
+python3 examples/llm-roundtrip/fake_hermes.py 9291
+# or: PORT=9291 python3 examples/llm-roundtrip/fake_hermes.py
+```
+
+The client takes the port from `argv[1]` first, then `PORT`, and defaults to the
+shared example default `9191`. It needs no dependencies beyond the standard
+library. The same listener passes the battery:
+
+```bash
+PORT=9291 go run ./examples/llm-roundtrip/ &
+h3-test --endpoint http://127.0.0.1:9291     # 46/46 PASSED
+```
+
+**Use when:** your harness wants Hermes' model to do the thinking — drafting,
+critiquing, summarising, multi-round deliberation — and you want the state
+machine for collecting those answers already written down.
+
+## 5. consensus — real-world integration
 
 `examples/consensus/main.go`
 
@@ -128,4 +192,6 @@ gateway, a tool service) and want the canonical shape of that integration.
 1. **Brand-new harness** → start from `minimal`, grow it.
 2. **Compliance questions / battery failures** → run `echo` and diff behaviour.
 3. **Protocol surface demos / SDK smoke tests** → run `conformance`.
-4. **External-agent integration** → study `consensus`, adapt the pattern.
+4. **Asking Hermes for LLM completions** → start from `llm-roundtrip`; its
+   `fake_hermes.py` drives the loop end-to-end with no LLM backend needed.
+5. **External-agent integration** → study `consensus`, adapt the pattern.
