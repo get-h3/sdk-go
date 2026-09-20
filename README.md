@@ -247,9 +247,10 @@ Where you build an example from decides whether it needs its own module:
   ```
 
 - **Copied out of the clone** into your own directory — the copy sits outside that
-  module, so give it one and pull the SDK in first:
+  module, so a bare build fails until you give it one:
 
   ```bash
+  go build .                          # exit 1: go: go.mod file not found in current directory or any parent directory
   go mod init my-module
   go get github.com/get-h3/sdk-go
   go build .                          # exit 0

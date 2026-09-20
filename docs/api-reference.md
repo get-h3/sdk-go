@@ -268,6 +268,10 @@ abandoned stays `active` forever until it is deleted, so consumers must not
 build expiry or cleanup monitoring on `expired`; watch `last_active` and
 `DELETE /v1/sessions/{id}` instead.
 
+Every transition above was driven against a live echo harness (`PORT=9296`) and
+the observed request/response pairs are recorded in
+[`docs/verification/gap-051-session-status-machine.md`](verification/gap-051-session-status-machine.md).
+
 Unknown session → `404`:
 
 ```json
