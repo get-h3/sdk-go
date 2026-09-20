@@ -615,7 +615,7 @@ type Identity struct {
 }
 
 type HistoryEntry struct {
-    Role    HistoryRole `json:"role"`    // user | assistant | system
+    Role    HistoryRole `json:"role"`    // user | assistant | system (RoleUser | RoleAssistant | RoleSystem)
     Content string      `json:"content"`
 }
 
@@ -668,7 +668,7 @@ type ResultRequest struct {
 }
 
 type Result struct {
-    Type       ResultType `json:"type"`     // tool_result | llm_response | text_sent | delegate_result | wait_timeout | error
+    Type       ResultType `json:"type"`     // tool_result | llm_response | text_sent | delegate_result | wait_timeout | error (ResultTool | ResultLLMResponse | ResultTextSent | ResultDelegate | ResultWaitTimeout | ResultError)
     ToolName   string     `json:"tool_name,omitempty"`
     Data       any        `json:"data,omitempty"`
     DurationMs float64    `json:"duration_ms,omitempty"`
@@ -681,7 +681,7 @@ type CancelRequest struct {
 }
 
 type HealthResponse struct {
-    Status          HealthStatus   `json:"status"` // ok | degraded | down
+    Status          HealthStatus   `json:"status"` // ok | degraded | down (HealthOK | HealthDegraded | HealthDown)
     Version         string         `json:"version"`
     Transport       string         `json:"transport,omitempty"`
     ProtocolVersion string         `json:"protocol_version,omitempty"`
@@ -697,7 +697,7 @@ type SessionResponse struct {
     StartedAt           string        `json:"started_at"`
     LastActive          string        `json:"last_active"`
     TurnCount           int           `json:"turn_count"`
-    Status              SessionStatus `json:"status"` // active | completed | expired | cancelled
+    Status              SessionStatus `json:"status"` // active | completed | expired | cancelled (SessionActive | SessionCompleted | SessionExpired | SessionCancelled)
     CurrentDecision     string        `json:"current_decision,omitempty"`
     CurrentDecisionType DecisionType  `json:"current_decision_type,omitempty"`
 }
@@ -713,6 +713,48 @@ type SessionTerminateResponse struct {
     Terminated bool   `json:"terminated"`
     SessionID  string `json:"session_id"`
 }
+```
+
+### Enum constants
+
+Wire values for the enum fields above, with their Go constants:
+
+```go
+type HistoryRole string
+
+const (
+    RoleUser      HistoryRole = "user"
+    RoleAssistant HistoryRole = "assistant"
+    RoleSystem    HistoryRole = "system"
+)
+
+type ResultType string
+
+const (
+    ResultTool        ResultType = "tool_result"
+    ResultLLMResponse ResultType = "llm_response"
+    ResultTextSent    ResultType = "text_sent"
+    ResultDelegate    ResultType = "delegate_result"
+    ResultWaitTimeout ResultType = "wait_timeout"
+    ResultError       ResultType = "error"
+)
+
+type HealthStatus string
+
+const (
+    HealthOK       HealthStatus = "ok"
+    HealthDegraded HealthStatus = "degraded"
+    HealthDown     HealthStatus = "down"
+)
+
+type SessionStatus string
+
+const (
+    SessionActive    SessionStatus = "active"
+    SessionCompleted SessionStatus = "completed"
+    SessionExpired   SessionStatus = "expired"
+    SessionCancelled SessionStatus = "cancelled"
+)
 ```
 
 ## 6. Error codes
