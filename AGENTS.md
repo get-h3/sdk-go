@@ -15,7 +15,7 @@ package main
 
 import (
     "fmt"
-    "net/http"
+    "log"
     "strings"
     "sync"
 
@@ -87,8 +87,10 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 }
 
 func main() {
+    addr := harness.ListenAddr()
     h := harness.NewHTTPServer(&EchoHarness{})
-    http.ListenAndServe(":9191", h)
+    log.Printf("h3 echo harness listening on %s (set %s to override)", addr, harness.PortEnv)
+    harness.Serve(addr, h)
 }
 ```
 
