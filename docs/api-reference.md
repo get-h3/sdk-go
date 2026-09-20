@@ -248,7 +248,25 @@ Response `200`:
 }
 ```
 
-`status` ∈ `active` | `completed` | `expired` | `cancelled`.
+#### Session status machine
+
+`status` ∈ `active` | `completed` | `expired` | `cancelled`. The server sets
+this field only through the transitions below:
+
+| Event | Effect on `status` | Terminal? |
+|---|---|---|
+| `POST /v1/process` with a session id not yet in the store | session created → `active` | no |
+| `POST /v1/process` or `POST /v1/result` answered with a `text` decision — **any** `finished` value, including `finished: true` | still `active` — a finished **turn** is not a finished **session**; `finished` ends only the turn | no |
+| Harness returns an `end` decision from `OnProcess` or `OnResult` | `completed` | no — a later `POST /v1/process` re-opens the session (back to `active`, `started_at`/`turn_count` reset), and `POST /v1/cancel` still overrides to `cancelled` |
+| `POST /v1/cancel` | `cancelled` — **terminal**: a late `POST /v1/process` or `/v1/result` never rewrites it (GAP-028) and it is never restored to `completed` or `active` | yes |
+| `DELETE /v1/sessions/{id}` | no status — the session is **removed** from the store; the following `GET /v1/sessions/{id}` returns `404 SESSION_NOT_FOUND` | n/a (gone) |
+
+`expired` is **never set by this SDK**: there is no TTL and no expiry timer
+anywhere in `harness/` or `protocol/` — the only trace of the value is the
+`SessionExpired` constant (kept for wire/API compatibility). A session that is
+abandoned stays `active` forever until it is deleted, so consumers must not
+build expiry or cleanup monitoring on `expired`; watch `last_active` and
+`DELETE /v1/sessions/{id}` instead.
 
 Unknown session → `404`:
 
@@ -698,7 +716,7 @@ type SessionResponse struct {
     StartedAt           string        `json:"started_at"`
     LastActive          string        `json:"last_active"`
     TurnCount           int           `json:"turn_count"`
-    Status              SessionStatus `json:"status"` // active | completed | expired | cancelled (SessionActive | SessionCompleted | SessionExpired | SessionCancelled)
+    Status              SessionStatus `json:"status"` // active | completed | cancelled — see "Session status machine" above; expired is defined but never set by this SDK (no TTL / expiry timer)
     CurrentDecision     string        `json:"current_decision,omitempty"`
     CurrentDecisionType DecisionType  `json:"current_decision_type,omitempty"`
 }
@@ -753,6 +771,9 @@ type SessionStatus string
 const (
     SessionActive    SessionStatus = "active"
     SessionCompleted SessionStatus = "completed"
+    // SessionExpired is part of the wire enum but is never produced by this
+    // SDK — the harness has no TTL and no expiry timer. Do not build
+    // session monitoring on it.
     SessionExpired   SessionStatus = "expired"
     SessionCancelled SessionStatus = "cancelled"
 )

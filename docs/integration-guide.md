@@ -369,10 +369,21 @@ don't manage it.
 | Event | What happens |
 |---|---|
 | `POST /v1/process` | Session created (`status: active`), turn counter incremented. |
-| `POST /v1/result` | `last_active` refreshed, turn counter incremented. |
+| `POST /v1/result` | `last_active` refreshed, turn counter incremented. Answered with `text` → session stays `active`. Answered with `end` → session becomes `completed`. |
+| Harness decision `end` (from `OnProcess` or `OnResult`) | Session marked `completed`. Not terminal: a later `POST /v1/process` re-opens the session (back to `active`, counters reset), and `POST /v1/cancel` still overrides it to `cancelled`. |
+| A turn finishes while the session continues | A `text` decision with `finished: true` ends only the **turn** — the session is still `active` afterwards. Only an `end` decision ends the **session** (`completed`); `finished` and `end` are different signals. |
 | `POST /v1/cancel` | Your `OnCancel` runs, session marked `cancelled`, responds `{"cancelled": true, "cancelled_decision_id": "<decision_id if in flight, else empty>"}`. |
 | `GET /v1/sessions/{id}` | Returns status/started/last_active/turn_count; `404 SESSION_NOT_FOUND` for unknown sessions. |
 | `DELETE /v1/sessions/{id}` | Your `OnSessionTerminate` runs, then the session is **deleted** (removed from the store); responds `{"terminated": true, "session_id": "<id>"}`; a subsequent `GET /v1/sessions/{id}` returns `404 SESSION_NOT_FOUND`; `404 SESSION_NOT_FOUND` for unknown sessions. |
+
+Notes for monitoring:
+
+- `cancelled` is terminal — a late `POST /v1/process` or `POST /v1/result`
+  never rewrites it.
+- The `expired` status exists in the wire enum but this SDK never sets it:
+  there is no TTL and no expiry timer. An abandoned session stays `active`
+  forever until deleted — build idle cleanup on `last_active`, not on
+  `expired`.
 
 Errors follow one JSON shape everywhere:
 
