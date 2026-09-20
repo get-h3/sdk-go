@@ -26,6 +26,14 @@ h3-test --endpoint http://127.0.0.1:9293
 
 With no `PORT` set, all five still serve on `:9191` as before.
 
+**First run compiles before it serves** — `go run` builds the binary before the listener
+binds, so the first requests can fail with `connection refused` or no response while the
+compile runs (seconds on a warm build cache, longer cold). Wait for the process to report
+its listen address, or poll `GET /v1/health` until it answers 200, before pointing
+`h3-test` at it. Run the examples from inside the clone; a `main.go` copied out into its
+own directory needs `go mod init` + `go get github.com/get-h3/sdk-go` first (see
+[README §Examples](../README.md#examples)).
+
 ## 1. minimal — the smallest compliant harness
 
 `examples/minimal/main.go`
