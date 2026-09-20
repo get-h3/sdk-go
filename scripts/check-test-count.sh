@@ -123,12 +123,18 @@ if [ -z "$COUNT" ]; then
         echo "      Fix: run this guard from the repo (or set H3_SDK_SCAN_ROOT)." >&2
         exit 2
     fi
+    # One awk process counts every test file (GAP-057): the per-file `grep -c`
+    # cost a process start per file for the same sum.
     COUNT=0
+    set --
     for f in $FILES; do
-        [ -f "$ROOT/$f" ] || continue
-        n=$(grep -c -E '^func Test' "$ROOT/$f" 2>/dev/null || true)
-        COUNT=$((COUNT + n))
+        if [ -f "$ROOT/$f" ]; then
+            set -- "$@" "$ROOT/$f"
+        fi
     done
+    if [ $# -gt 0 ]; then
+        COUNT=$(awk '/^func Test/ {n++} END {print n + 0}' "$@")
+    fi
     MODE="static (tracked *_test.go, \`^func Test\`)"
 fi
 
@@ -198,9 +204,14 @@ is_excluded() {
     esac
 }
 
-has_banner() {
-    head -n 25 "$1" 2>/dev/null | grep -q -E -- "$BANNER_PATTERN"
-}
+# The patterns above are EREs, and `-v` escape-processes backslashes, so they
+# reach awk through the environment instead. The banner predicate and both
+# per-file sweeps below then run inside ONE awk process (GAP-057): the previous
+# shape started fresh coreutils for every assertion on every file
+# (head+grep for the banner, grep+sed+tr+wc+awk for the tables) — ~8 process
+# starts on each of ~59 artifacts, and the guard is itself invoked ~17x by
+# scripts/countguard/guard_test.go.
+export RETIRED BANNER_PATTERN ROOT
 
 if cd "$ROOT" && git rev-parse --git-dir >/dev/null 2>&1; then
     FILES=$(cd "$ROOT" && git ls-files)
@@ -216,62 +227,89 @@ if [ -n "$SPACED" ]; then
     exit 2
 fi
 
-HITS=0
+# The scanned set — the same is_scanned / is_excluded / existence filters as
+# ever, resolved once here so a single awk process can classify the whole set.
+set --
 for f in $FILES; do
     if ! is_scanned "$f"; then continue; fi
     if is_excluded "$f"; then continue; fi
     if [ ! -f "$ROOT/$f" ]; then continue; fi
-    if has_banner "$ROOT/$f"; then continue; fi
-
-    OUT=$(grep -n -I -E -- "$RETIRED" "$ROOT/$f" 2>/dev/null || true)
-    if [ -n "$OUT" ]; then
-        OUT=$(printf '%s\n' "$OUT" | grep -v 'count-ok-historical' || true)
-    fi
-    SEEN=""
-    if [ -n "$OUT" ]; then
-        SEEN=$(printf '%s\n' "$OUT" | sed -n 's/^\([0-9][0-9]*\):.*/\1/p' | tr '\n' ' ')
-        printf '%s\n' "$OUT" | while IFS= read -r hit; do
-            printf '%s:%s\n' "$f" "$hit"
-        done
-        N=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
-        HITS=$((HITS + N))
-    fi
-
-    # Lines the retired sweep already reported are not reported twice, so the
-    # hit total stays an honest count of offending lines.
-    CLAIMS=$(awk -v cs="$SUITE" -v cb="$BATTERY" -v seen="$SEEN" '
-        function in_seen(ln, i) {
-            for (i = 1; i <= n_seen; i++) if (sa[i] + 0 == ln) return 1
-            return 0
-        }
-        BEGIN { n_seen = split(seen, sa, " ") }
-        /count-ok-historical/ { next }
-        {
-            line = $0
-            while (match(line, /[0-9][0-9][0-9][- ]tests?/)) {
-                n = substr(line, RSTART, RLENGTH) + 0
-                if (n != cs && !in_seen(NR)) printf "%d: suite claim %d tests != %d: %s\n", NR, n, cs, $0
-                line = substr(line, RSTART + RLENGTH)
-            }
-            line = $0
-            countable = (tolower($0) ~ /tests?|battery|compliance|pytest|vitest|checks?|suite|passed/)
-            while (match(line, /[0-9]+\/[0-9]+/)) {
-                tok = substr(line, RSTART, RLENGTH)
-                split(tok, parts, "/")
-                b = parts[2] + 0
-                if (countable && b >= 40 && b != cb && b != cs && !in_seen(NR))
-                    printf "%d: total claim %s is not a canonical total (%d/%d): %s\n", NR, tok, cb, cs, $0
-                line = substr(line, RSTART + RLENGTH)
-            }
-        }' "$ROOT/$f")
-    if [ -n "$CLAIMS" ]; then
-        printf '%s\n' "$CLAIMS" | while IFS= read -r hit; do
-            printf '%s:%s\n' "$f" "$hit"
-        done
-        N=$(printf '%s\n' "$CLAIMS" | wc -l | tr -d ' ')
-        HITS=$((HITS + N))
-    fi
+    set -- "$@" "$ROOT/$f"
 done
+
+# One pass emits both tables for each file, in the order the per-file loops
+# used to: the retired-literal hits first, then the claims not already reported
+# on such a line. A file's lines are buffered so its reports print before the
+# next file's, keeping the report order byte-identical to the old loop.
+DETAIL=""
+if [ $# -gt 0 ]; then
+    DETAIL=$(awk -v cs="$SUITE" -v cb="$BATTERY" '
+        BEGIN {
+            pre = ENVIRON["ROOT"] "/"
+            prelen = length(pre)
+            retired = ENVIRON["RETIRED"]
+            banner = ENVIRON["BANNER_PATTERN"]
+            cur = ""
+            nlines = 0
+            banned = 0
+        }
+        function rel(p) {
+            if (substr(p, 1, prelen) == pre) return substr(p, prelen + 1)
+            return p
+        }
+        function flush(   i, line, n, tok, parts, b, countable) {
+            if (cur == "") return
+            if (banned == 0) {
+                for (i = 1; i <= nlines; i++) {
+                    if (buf[i] ~ retired && buf[i] !~ /count-ok-historical/) {
+                        printf "%s:%d:%s\n", cur, i, buf[i]
+                        seen[i] = 1
+                    }
+                }
+                for (i = 1; i <= nlines; i++) {
+                    if (buf[i] ~ /count-ok-historical/) continue
+                    line = buf[i]
+                    while (match(line, /[0-9][0-9][0-9][- ]tests?/)) {
+                        n = substr(line, RSTART, RLENGTH) + 0
+                        if (n != cs && !(i in seen))
+                            printf "%s:%d: suite claim %d tests != %d: %s\n", cur, i, n, cs, buf[i]
+                        line = substr(line, RSTART + RLENGTH)
+                    }
+                    line = buf[i]
+                    countable = (tolower(buf[i]) ~ /tests?|battery|compliance|pytest|vitest|checks?|suite|passed/)
+                    while (match(line, /[0-9]+\/[0-9]+/)) {
+                        tok = substr(line, RSTART, RLENGTH)
+                        split(tok, parts, "/")
+                        b = parts[2] + 0
+                        if (countable && b >= 40 && b != cb && b != cs && !(i in seen))
+                            printf "%s:%d: total claim %s is not a canonical total (%d/%d): %s\n", cur, i, tok, cb, cs, buf[i]
+                        line = substr(line, RSTART + RLENGTH)
+                    }
+                }
+            }
+            cur = ""
+            nlines = 0
+            banned = 0
+            for (k in seen) delete seen[k]
+        }
+        FNR == 1 {
+            flush()
+            cur = rel(FILENAME)
+        }
+        {
+            buf[FNR] = $0
+            nlines = FNR
+            if (FNR <= 25 && $0 ~ banner) banned = 1
+        }
+        END { flush() }
+    ' "$@")
+fi
+
+HITS=0
+if [ -n "$DETAIL" ]; then
+    printf '%s\n' "$DETAIL"
+    HITS=$(printf '%s\n' "$DETAIL" | wc -l | tr -d ' ')
+fi
 
 if [ "$HITS" -ne 0 ]; then
     echo "FAIL: $HITS stale count literal(s) above." >&2
@@ -284,18 +322,51 @@ fi
 echo "check-test-count: no stale count literals in current-state surfaces"
 
 # ---- (f) dated records must carry a point-in-time banner -------------------
-UNBANNERED=0
+# Same predicate as the sweep above — a dated record quoting a retired count
+# without declaring itself a point-in-time record — but these files are rare,
+# so one awk answers which of them fail and the shell only formats the message.
+# (The sweep has already exited 1 if it found anything, so this runs on a tree
+# that is otherwise clean.)
+set --
 for f in $FILES; do
     case "$f" in
         docs/dogfood/[0-9][0-9][0-9][0-9]-* | docs/audit-[0-9][0-9][0-9][0-9]-*) ;;
         *) continue ;;
     esac
     if [ ! -f "$ROOT/$f" ]; then continue; fi
-    if ! grep -q -I -E -- "$RETIRED" "$ROOT/$f" 2>/dev/null; then continue; fi
-    if has_banner "$ROOT/$f"; then continue; fi
-    echo "FAIL: $f quotes a retired count with no point-in-time banner." >&2
-    UNBANNERED=$((UNBANNERED + 1))
+    set -- "$@" "$ROOT/$f"
 done
+
+UNBANNERED=0
+if [ $# -gt 0 ]; then
+    UNBANNERED_FILES=$(awk '
+        BEGIN {
+            retired = ENVIRON["RETIRED"]
+            banner = ENVIRON["BANNER_PATTERN"]
+            cur = ""
+            quoted = 0
+            banned = 0
+        }
+        FNR == 1 {
+            if (cur != "" && quoted && banned == 0) print cur
+            cur = FILENAME
+            quoted = 0
+            banned = 0
+        }
+        {
+            if ($0 ~ retired) quoted = 1
+            if (FNR <= 25 && $0 ~ banner) banned = 1
+        }
+        END { if (cur != "" && quoted && banned == 0) print cur }
+    ' "$@")
+    if [ -n "$UNBANNERED_FILES" ]; then
+        printf '%s\n' "$UNBANNERED_FILES" | while IFS= read -r hit; do
+            rel=${hit#"$ROOT/"}
+            echo "FAIL: $rel quotes a retired count with no point-in-time banner." >&2
+        done
+        UNBANNERED=$(printf '%s\n' "$UNBANNERED_FILES" | wc -l | tr -d ' ')
+    fi
+fi
 if [ "$UNBANNERED" -ne 0 ]; then
     echo "      Fix: add one line directly under the first heading:" >&2
     echo "        > **Historical (YYYY-MM-DD):** point-in-time record — the counts" >&2
