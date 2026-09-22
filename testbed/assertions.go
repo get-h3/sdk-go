@@ -1,5 +1,8 @@
-// Package testbed provides MockHermes and assertion helpers for unit-testing
-// harness implementations against the H3 protocol.
+// Assertion helpers for harness behaviour — AssertDecisionType,
+// AssertTextContent, AssertEndReason, AssertNoError and AssertDecisionValid.
+// The package documentation (MockHermes, and the harness.Harness vs
+// http.Handler split) lives in mock_hermes.go.
+
 package testbed
 
 import (

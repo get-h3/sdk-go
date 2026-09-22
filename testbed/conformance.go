@@ -1,5 +1,7 @@
-// Package testbed provides MockHermes and assertion helpers for unit-testing
-// harness implementations against the H3 protocol.
+// NewConformanceHarness and the S04 §6 conformance behaviour. The package
+// documentation (MockHermes, and the harness.Harness vs http.Handler split)
+// lives in mock_hermes.go.
+
 package testbed
 
 import (

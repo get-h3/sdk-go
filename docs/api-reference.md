@@ -896,6 +896,10 @@ type ValidationError struct {
 
 ```go
 func NewMockHermes(h harness.Harness) *MockHermes
+// NewMockHermesWithServer returns the mock above plus the HTTP handler for the
+// SAME harness — the one order that works (harness in, handler wrapped around
+// it). Additive convenience: mh is exactly NewMockHermes(h).
+func NewMockHermesWithServer(h harness.Harness) (*MockHermes, http.Handler)
 
 func (m *MockHermes) SendMessage(sessionID, content, userName, userID string) (*protocol.Decision, error)
 func (m *MockHermes) SendResult(sessionID, decisionID string, result protocol.Result) (*protocol.Decision, error)
@@ -912,6 +916,16 @@ m.SessionCount  int
 
 `SendMessage` builds a full `ProcessRequest` (identity `platform: "test"`,
 `DefaultContext()`) so tests exercise realistic input.
+
+`NewMockHermes` takes a `harness.Harness` — **not** the `http.Handler` returned by
+`harness.NewHTTPServer`, which does not compile
+(`http.Handler does not implement harness.Harness (missing method Health)`): the
+handler is the HTTP layer that calls the harness, so to exercise a harness over
+HTTP, wrap the **harness** with `NewHTTPServer` and post to the handler it
+returns — or take both at once from `NewMockHermesWithServer`. `SendMessage`
+(and `SendResult`) return `(*protocol.Decision, error)`, never a bool: assert on
+the Decision's own fields (`dec.Decision`, `dec.Text.Content`,
+`dec.Text.Finished`).
 
 ### Fixtures
 

@@ -1,9 +1,52 @@
 // Package testbed provides MockHermes and assertion helpers
 // for unit-testing H3 harness logic.
+//
+// # Argument and return types — the two easy mistakes
+//
+// NewMockHermes takes a harness.Harness (your harness), and SendMessage,
+// SendMessageWithHistory and SendResult return a *protocol.Decision. Nothing in
+// this package accepts or returns an http.Handler, and nothing answers a bool:
+//
+//   - NewMockHermes(h harness.Harness) drives the harness in process. Passing
+//     the http.Handler returned by harness.NewHTTPServer(h) does not compile —
+//     `http.Handler does not implement harness.Harness (missing method
+//     Health)`. That error names a LAYER MIX-UP, not a missing method on your
+//     harness: the handler is the HTTP front end that calls the harness, and
+//     only the harness has Health/OnProcess/OnResult/OnCancel/
+//     OnSessionTerminate.
+//   - To exercise the same harness over HTTP, pass the HARNESS (not the mock,
+//     never the handler) to harness.NewHTTPServer and serve or post to the
+//     handler it returns. NewMockHermesWithServer returns the mock and that
+//     handler together, so the order cannot be inverted.
+//   - A Decision is asserted field by field — dec.Decision, dec.Text,
+//     dec.Text.Content, dec.Text.Finished, dec.End, … — next to the error. A
+//     non-nil Decision says nothing about err, and a nil err says nothing about
+//     the Decision's payload fields.
+//
+// # The full pattern
+//
+// Mock in process and the same harness over HTTP, one message each, asserted in
+// turn:
+//
+//	h := &MyHarness{}
+//	mh := testbed.NewMockHermes(h) // harness.Harness in
+//	dec, err := mh.SendMessage("s1", "hello mock", "alice", "u1")
+//	// dec is *protocol.Decision — dec.Decision, dec.Text.Content, dec.Text.Finished, …
+//
+//	ts := httptest.NewServer(harness.NewHTTPServer(h)) // the HTTP layer, over the harness
+//	defer ts.Close()
+//	resp, err := http.Post(ts.URL+"/v1/process", "application/json", body)
+//	var overHTTP protocol.Decision
+//	err = json.NewDecoder(resp.Body).Decode(&overHTTP)
+//
+// Both paths reach the same harness methods, so the Decision decoded from JSON
+// agrees field for field with the one the mock returned in process. See
+// ExampleNewMockHermes for the runnable form.
 package testbed
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/get-h3/sdk-go/harness"
@@ -25,10 +68,89 @@ type MockHermes struct {
 }
 
 // NewMockHermes creates a MockHermes wrapping the given harness.
+//
+// The argument is a harness.Harness — the interface your harness implements
+// (OnProcess, OnResult, OnCancel, OnSessionTerminate, Health). It is NOT an
+// http.Handler: passing the handler returned by harness.NewHTTPServer(h) fails
+// to compile with
+//
+//	http.Handler does not implement harness.Harness (missing method Health)
+//
+// which reports the layer mix-up, not a missing method on your harness. The two
+// layers stack rather than substitute: the handler is the HTTP front end that
+// calls the harness, and only the harness has Health and the On* methods. To
+// drive the same harness over HTTP, wrap the HARNESS with harness.NewHTTPServer
+// and post to the handler it returns.
+//
+// Minimal correct pattern — mock, then the HTTP layer, then one request, then a
+// field-by-field assert on the returned Decision:
+//
+//	h := &MyHarness{}
+//	mh := NewMockHermes(h) // a harness.Harness goes in
+//
+//	// In process: the mock drives the same harness directly.
+//	dec, err := mh.SendMessage("s1", "hello mock", "alice", "u1")
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	if dec.Decision != protocol.DecisionText || dec.Text == nil ||
+//		dec.Text.Content != "Echo: hello mock" || !dec.Text.Finished {
+//		t.Fatalf("unexpected decision: %+v", dec)
+//	}
+//
+//	// Over HTTP: wrap the HARNESS — never the mock, never the handler — and post.
+//	ts := httptest.NewServer(harness.NewHTTPServer(h))
+//	defer ts.Close()
+//	resp, err := http.Post(ts.URL+"/v1/process", "application/json", body)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	defer resp.Body.Close()
+//	var overHTTP protocol.Decision
+//	if err := json.NewDecoder(resp.Body).Decode(&overHTTP); err != nil {
+//		t.Fatal(err)
+//	}
+//	// overHTTP.Decision / overHTTP.Text.Content / overHTTP.Text.Finished — the
+//	// same fields as the in-process Decision above.
+//
+// SendMessage returns (*protocol.Decision, error) — a Decision POINTER and an
+// error, never a bool. A bool lives inside the Decision (TextResp.Finished as
+// dec.Text.Finished, or Result.Success); read it off there.
+//
+// NewMockHermesWithServer returns this mock together with the HTTP handler for
+// the same harness, so the two layers cannot be swapped.
 func NewMockHermes(h harness.Harness) *MockHermes {
 	return &MockHermes{
 		Harness: h,
 	}
+}
+
+// NewMockHermesWithServer builds a MockHermes for h and the HTTP handler that
+// fronts the SAME harness, in the one order that works: a harness.Harness goes
+// in, and the returned http.Handler is what an httptest server (or
+// http.ListenAndServe) serves.
+//
+// It is the additive convenience wrapper over
+//
+//	mh := testbed.NewMockHermes(h)
+//	handler := harness.NewHTTPServer(h)
+//
+// and exists to make the layering impossible to get wrong: the handler it hands
+// back can never be passed to NewMockHermes, because NewMockHermes accepts only
+// a harness. Both return values read the same harness, so a Decision asserted
+// through mh and the same Decision decoded from a POST to the handler agree
+// field for field — mh is exactly NewMockHermes(h), with no extra state and no
+// behaviour of its own (see ExampleNewMockHermes and TestMockHermesHTTPRoundtrip).
+//
+//	h := &MyHarness{}
+//	mh, handler := testbed.NewMockHermesWithServer(h)
+//	ts := httptest.NewServer(handler)
+//	defer ts.Close()
+//
+//	dec, err := mh.SendMessage("s1", "hello mock", "alice", "u1") // in process
+//	// … and POST ts.URL+"/v1/process" for the HTTP path over the same harness.
+func NewMockHermesWithServer(h harness.Harness) (*MockHermes, http.Handler) {
+	return NewMockHermes(h), harness.NewHTTPServer(h)
 }
 
 // recoverErr converts a recovered panic into an error prefixed with "harness panic:".

@@ -109,7 +109,7 @@ call):
 
     go build ./...                     # OK
     go vet ./...                       # OK
-    go test -p 1 ./...                 # all packages ok (168 tests)
+    go test -p 1 ./...                 # all packages ok (168 tests; count-ok-historical: the suite was 168 at this commit)
     go test -race -p 1 ./harness/      # ok
     go test -p 1 -count=5 -run '<new + GAP-043 concurrency tests>' ./harness/   # ok, no flakes
     sh scripts/check-test-count.sh     # PASS — suite=168 agrees with the live count

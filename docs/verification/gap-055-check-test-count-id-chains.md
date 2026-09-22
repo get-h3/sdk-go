@@ -135,7 +135,7 @@ alone, not the checks around it.
     go build ./...                     # OK
     go vet ./...                       # OK
     gofmt -l .                          # empty
-    go test -race -count=1 ./...        # ok — 4 packages with tests, 168 tests
+    go test -race -count=1 ./...        # ok — 4 packages with tests, 168 tests (count-ok-historical: 168 at this commit)
     sh scripts/check-test-count.sh      # PASS — battery=46, suite=168
 
 Suite math: 165 at the branch point + 3 new top-level tests here = 168, which is
