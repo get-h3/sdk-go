@@ -221,7 +221,15 @@ type Result struct {
 	ToolName   string     `json:"tool_name,omitempty"`
 	Data       any        `json:"data,omitempty"`
 	DurationMs float64    `json:"duration_ms,omitempty"`
-	Success    bool       `json:"success"`
+	Success    *bool      `json:"success"`
+}
+
+// BoolPtr returns a pointer to b. Convenience for populating the required
+// Result.Success field, which is a *bool so that an absent "success" in the
+// decoded JSON stays distinguishable from an explicit false — the wire schema
+// marks success required (protocol/schemas/v1/result-request.json).
+func BoolPtr(b bool) *bool {
+	return &b
 }
 
 // ResultRequest is the request body for POST /v1/result.

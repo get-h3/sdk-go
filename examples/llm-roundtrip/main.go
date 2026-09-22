@@ -255,7 +255,7 @@ func (h *Deliberator) OnResult(req *protocol.ResultRequest) (*protocol.Decision,
 	// A failed execution ends the deliberation with the error reason instead of
 	// walking the loop into a dead end. (The battery posts a failing result and
 	// requires no 5xx: an error is a legitimate outcome, not a crash.)
-	if !req.Result.Success || req.Result.Type == protocol.ResultError {
+	if req.Result.Success == nil || !*req.Result.Success || req.Result.Type == protocol.ResultError {
 		s.step = stepDone
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,

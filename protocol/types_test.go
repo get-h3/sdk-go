@@ -304,7 +304,7 @@ func TestResultRequestRoundTrip(t *testing.T) {
 			ToolName:   "read_file",
 			Data:       map[string]any{"content": "file contents here"},
 			DurationMs: 150,
-			Success:    true,
+			Success:    BoolPtr(true),
 		},
 	}
 
@@ -321,7 +321,7 @@ func TestResultRequestRoundTrip(t *testing.T) {
 	if parsed.Result.Type != ResultTool {
 		t.Errorf("result.type = %q", parsed.Result.Type)
 	}
-	if !parsed.Result.Success {
+	if parsed.Result.Success == nil || !*parsed.Result.Success {
 		t.Error("result.success should be true")
 	}
 	if parsed.Result.DurationMs != 150 {

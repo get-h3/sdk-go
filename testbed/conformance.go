@@ -189,7 +189,7 @@ func (h *ConformanceHarness) OnResult(req *protocol.ResultRequest) (*protocol.De
 		}, nil
 	}
 
-	if !req.Result.Success || req.Result.Type == protocol.ResultError {
+	if req.Result.Success == nil || !*req.Result.Success || req.Result.Type == protocol.ResultError {
 		return &protocol.Decision{
 			Decision:   protocol.DecisionEnd,
 			DecisionID: "dec-end-error",
