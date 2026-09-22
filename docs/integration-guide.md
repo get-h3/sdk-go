@@ -149,7 +149,7 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 
 func main() {
     h := harness.NewHTTPServer(&EchoHarness{})
-    log.Fatal(http.ListenAndServe(":9191", h))
+    log.Fatal(http.ListenAndServe(harness.ListenAddr(), h))
 }
 ```
 
@@ -159,12 +159,14 @@ Save as `main.go` and run:
 go run main.go
 ```
 
-You now have a live harness on `http://localhost:9191`.
+You now have a live harness on `http://localhost:9191` — that is `PORT`'s default, and
+the `main` above already honours the override.
 
 **Every example honors the `PORT` environment variable** (default `9191`), so when
 another harness already holds the default port you move the listener instead of
-editing source. The same rule applies to your own harness if you build the address
-with `harness.ListenAddr()` and serve it with `harness.Serve`:
+editing source. The quickstart `main` above does the same thing: it hands
+`harness.ListenAddr()` (`":<PORT>"`, default `:9191`) to `http.ListenAndServe`.
+`harness.Serve(addr, h)` adds the shared collision message on top:
 
 ```bash
 PORT=9293 go run ./examples/conformance/
@@ -191,14 +193,14 @@ curl -s -X POST http://127.0.0.1:9191/v1/process \
     "message": {"role": "user", "content": "hello from curl"},
     "context": {"history": []}
   }'
-# → {"decision":"text","decision_id":"f4be6275-852e-465c-9829-8047d713704c","text":{"content":"Echo: hello from curl","finished":true}}
+# → {"decision":"text","decision_id":"3ba2d43b-d47e-430a-a946-781dd1e52907","text":{"content":"Echo: hello from curl","finished":true}}
 
 # 2. Report the result of that decision — decision_id comes from step 1
 curl -s -X POST http://127.0.0.1:9191/v1/result \
   -H 'Content-Type: application/json' \
   -d '{
     "session_id": "curl-demo-1",
-    "decision_id": "f4be6275-852e-465c-9829-8047d713704c",
+    "decision_id": "3ba2d43b-d47e-430a-a946-781dd1e52907",
     "result": {"type": "tool_result", "success": true}
   }'
 

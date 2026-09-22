@@ -97,7 +97,7 @@ func (h *EchoHarness) Health() *protocol.HealthResponse {
 
 func main() {
     h := harness.NewHTTPServer(&EchoHarness{})
-    http.ListenAndServe(":9191", h)
+    http.ListenAndServe(harness.ListenAddr(), h)
 }
 ```
 
@@ -161,7 +161,7 @@ curl -s -X POST http://127.0.0.1:9191/v1/process \
 ```
 
 ```json
-{"decision":"text","decision_id":"f4be6275-852e-465c-9829-8047d713704c","text":{"content":"Echo: hello from curl","finished":true}}
+{"decision":"text","decision_id":"e766d816-46aa-47d1-90af-85ee65ea28c8","text":{"content":"Echo: hello from curl","finished":true}}
 ```
 
 `decision_id` is **server-assigned** here: the quickstart harness never sets
@@ -179,7 +179,7 @@ curl -s -X POST http://127.0.0.1:9191/v1/result \
   -H 'Content-Type: application/json' \
   -d '{
     "session_id": "curl-demo-1",
-    "decision_id": "f4be6275-852e-465c-9829-8047d713704c",
+    "decision_id": "e766d816-46aa-47d1-90af-85ee65ea28c8",
     "result": {"type": "tool_result", "success": true}
   }'
 
@@ -190,8 +190,13 @@ curl -s -X DELETE http://127.0.0.1:9191/v1/sessions/curl-demo-1
 Step 3 returns the live session state, for example:
 
 ```json
-{"session_id":"curl-demo-1","turn_count":1,"status":"active","current_decision":"f4be6275-852e-465c-9829-8047d713704c","current_decision_type":"text"}
+{"session_id":"curl-demo-1","started_at":"2026-09-22T15:33:44-05:00","last_active":"2026-09-22T15:33:44-05:00","turn_count":1,"status":"active","current_decision":"e766d816-46aa-47d1-90af-85ee65ea28c8","current_decision_type":"text"}
 ```
+
+`started_at` and `last_active` are RFC3339 stamps from the SDK server's clock,
+`turn_count`/`status` come from its session store, and `current_decision` is the
+`decision_id` the server assigned in step 2 — same rule as above: the ids on this
+page are from one live run, so read the values from your own responses.
 
 Every decision type, every error code and the full field reference:
 [docs/api-reference.md](docs/api-reference.md).
@@ -206,10 +211,13 @@ PORT=9293 go run ./examples/conformance/
 h3-test --endpoint http://127.0.0.1:9293
 ```
 
-Your own `main` gets the same behaviour from the shared helpers — `harness.ListenAddr()`
-resolves `PORT` (default `9191`) for the address you pass to `http.ListenAndServe`, and
-`harness.Serve(addr, h)` reports a bind collision with a hint naming the `PORT` override
-instead of a bare `address already in use`.
+The quickstart `main` above is already such a harness: it hands `harness.ListenAddr()`
+to `http.ListenAndServe`, so `PORT=9295 go run main.go` serves the identical walkthrough
+on `:9295` (use that port in the curl commands). Your own `main` gets the same behaviour
+from the shared helpers — `harness.ListenAddr()` resolves `PORT` (default `9191`) for the
+address you pass to `http.ListenAndServe`, and `harness.Serve(addr, h)` reports a bind
+collision with a hint naming the `PORT` override instead of a bare
+`address already in use`.
 
 ## Verify compliance (46/46)
 
