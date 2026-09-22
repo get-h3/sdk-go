@@ -79,6 +79,24 @@ Routes use Go 1.22 pattern matching; the `{id}` wildcard is read with
 
 All request/response bodies are `application/json`.
 
+### Request body cap
+
+Every `POST` body is capped at **10 MiB** (the `maxRequestBodyBytes` constant in
+`harness/harness.go`). The cap is applied with `http.MaxBytesReader` *before*
+the body is decoded, so the memory one request can cost is bounded by the
+constant instead of by the caller — an unauthenticated client can no longer make
+the process allocate its way out of memory by streaming an unbounded body
+(GAP-060). An oversized body is refused with HTTP `413` and a JSON
+`ErrorResponse`:
+
+```json
+{"error": {"code": "INVALID_REQUEST", "message": "request body exceeds the 10485760-byte limit"}}
+```
+
+The refusal happens before any harness method runs. A body *under* the cap is
+unaffected: a malformed one still answers `400 INVALID_REQUEST` with the same
+`failed to decode request body: …` message as before.
+
 ### `GET /v1/health`
 
 Response `200`:
@@ -146,6 +164,18 @@ Validation (else `400 INVALID_REQUEST`): `session_id` non-empty,
 rejected), `identity.platform` non-empty, `identity.chat_id`
 non-empty. Everything else is optional.
 
+**Session bookkeeping (GAP-059).** `session_id` addresses a *session*, and a
+repeated `POST /v1/process` is another **turn** of it rather than a new one —
+`started_at` is the time the session (or its current lifecycle) began, never
+"the time of this request":
+
+| Session state when the request arrives | Effect on the session entry |
+|---|---|
+| not in the store | created: `status` `active`, `started_at` = now, `turn_count` = 1 |
+| `active` | **accumulates**: `turn_count` + 1, `started_at` preserved |
+| `completed` | **re-opened**: back to `active`, `started_at` reset to now, `turn_count` = 1, and the previous lifecycle's decision bookkeeping is dropped |
+| `cancelled` | untouched — `status`/`started_at`/`turn_count` unchanged (terminal, GAP-028); your `OnProcess` still runs (permissive) |
+
 Response `200` — a Decision (see [§4 Decision types](#4-decision-types)):
 
 ```json
@@ -196,6 +226,18 @@ invented id can no longer advance a session. `OnResult` is not called on either
 rejection. See
 [Result correlation and at-least-once delivery](integration-guide.md#result-correlation-and-at-least-once-delivery)
 for the retry recipe.
+
+**The check is atomic with the claim it implies (GAP-058).** The server verifies
+`decision_id` and records the admitted delivery in ONE locked transaction
+*before* `OnResult` runs, and it delivers one result at a time per session. Two
+concurrent deliveries of the same `decision_id` therefore produce exactly one
+`OnResult` call: one delivery is accepted and every other gets `400`
+(`already been resolved`). Before this, the check and the record it wrote were
+separate lock acquisitions with `OnResult` in between, so a retry racing the
+first delivery ran the harness's tool step twice — the check-then-act race, not
+a correlation miss. A delivery that ends in `500` (your `OnResult` returned an
+error, or the decision failed validation) **releases its claim**, so retrying
+that same `decision_id` afterwards is admitted and correlated normally.
 
 Response `200` — the next Decision, exactly like `/v1/process`.
 
@@ -820,7 +862,7 @@ type ErrorResponse struct {
 
 | Code | Emitted by the SDK server | Meaning |
 |---|---|---|
-| `INVALID_REQUEST` | `400` on `/v1/process` and `/v1/cancel` (and any decode failure) | Malformed JSON or missing required field. `/v1/process`: `session_id`, `message.role`, `identity.platform`, `identity.chat_id`. `/v1/cancel`: `session_id`, or `reason` outside `user_interrupt` \| `timeout` \| `system` |
+| `INVALID_REQUEST` | `400` on `/v1/process`, `/v1/result` and `/v1/cancel` (a decode failure or a missing/invalid required field); `413` when the request body exceeds the 10 MiB cap (GAP-060) | Malformed JSON or missing required field. `/v1/process`: `session_id`, `message.role`, `identity.platform`, `identity.chat_id`. `/v1/result`: `session_id`, `decision_id`, `result.type` (plus the correlation refusals). `/v1/cancel`: `session_id`, or `reason` outside `user_interrupt` \| `timeout` \| `system` |
 | `INVALID_DECISION` | `500` after `OnProcess`/`OnResult` | Decision failed `Validate()` — missing payload for its type |
 | `INTERNAL_ERROR` | `500` | Your method returned a non-nil error |
 | `SESSION_NOT_FOUND` | `404` on `GET`/`DELETE /v1/sessions/{id}` and on `POST /v1/cancel` with a **valid** body naming an unknown session | No session with that id in the store |

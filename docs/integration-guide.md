@@ -368,9 +368,9 @@ don't manage it.
 
 | Event | What happens |
 |---|---|
-| `POST /v1/process` | Session created (`status: active`), turn counter incremented. |
-| `POST /v1/result` | `last_active` refreshed, turn counter incremented. Answered with `text` → session stays `active`. Answered with `end` → session becomes `completed`. |
-| Harness decision `end` (from `OnProcess` or `OnResult`) | Session marked `completed`. Not terminal: a later `POST /v1/process` re-opens the session (back to `active`, counters reset), and `POST /v1/cancel` still overrides it to `cancelled`. |
+| `POST /v1/process` | Session created on first sight (`status: active`, `turn_count: 1`), and turn counter incremented on every later call. A repeated call on an `active` session **accumulates** — `started_at` is preserved; only re-opening a `completed` session resets `started_at`/`turn_count` (GAP-059). |
+| `POST /v1/result` | `last_active` refreshed, turn counter incremented — one turn at most per `decision_id`, because the delivery is admitted atomically before your `OnResult` runs (GAP-058). Answered with `text` → session stays `active`. Answered with `end` → session becomes `completed`. |
+| Harness decision `end` (from `OnProcess` or `OnResult`) | Session marked `completed`. Not terminal: a later `POST /v1/process` re-opens the session (back to `active`, `started_at`/`turn_count` reset), and `POST /v1/cancel` still overrides it to `cancelled`. |
 | A turn finishes while the session continues | A `text` decision with `finished: true` ends only the **turn** — the session is still `active` afterwards. Only an `end` decision ends the **session** (`completed`); `finished` and `end` are different signals. |
 | `POST /v1/cancel` | Your `OnCancel` runs, session marked `cancelled`, responds `{"cancelled": true, "cancelled_decision_id": "<decision_id if in flight, else empty>"}`. |
 | `GET /v1/sessions/{id}` | Returns status/started/last_active/turn_count; `404 SESSION_NOT_FOUND` for unknown sessions. |
@@ -380,6 +380,10 @@ Notes for monitoring:
 
 - `cancelled` is terminal — a late `POST /v1/process` or `POST /v1/result`
   never rewrites it.
+- `turn_count` counts turns of the *current lifecycle*; `started_at` is when
+  that lifecycle began. Use `GET /v1/sessions/{id}` for a session's real
+  history instead of assuming a repeated `POST /v1/process` restarted it
+  (GAP-059).
 - The `expired` status exists in the wire enum but this SDK never sets it:
   there is no TTL and no expiry timer. An abandoned session stays `active`
   forever until deleted — build idle cleanup on `last_active`, not on
@@ -391,11 +395,17 @@ Errors follow one JSON shape everywhere:
 {"error": {"code": "SESSION_NOT_FOUND", "message": "session not found: abc"}}
 ```
 
+Every `POST` body is capped at **10 MiB** (`http.MaxBytesReader`, applied before
+decoding), so the memory one request can cost is bounded by the SDK — an
+oversized body answers `413` `INVALID_REQUEST` and never reaches your methods
+(GAP-060).
+
 | Situation | Status | Code |
 |---|---|---|
 | Malformed JSON body | 400 | `INVALID_REQUEST` |
 | Missing `session_id` / `message.role` / `identity.platform` / `identity.chat_id` | 400 | `INVALID_REQUEST` |
 | A result's `decision_id` is not the session's in-flight decision (retry, stale or invented) | 400 | `INVALID_REQUEST` |
+| Request body over the 10 MiB cap | 413 | `INVALID_REQUEST` |
 | Your method returns an error | 500 | `INTERNAL_ERROR` |
 | Your decision fails validation (missing payload, empty content) | 500 | `INVALID_DECISION` |
 | Unknown session on GET/DELETE | 404 | `SESSION_NOT_FOUND` |
@@ -431,6 +441,16 @@ result re-ran `OnResult`, which re-executed the harness's tool step and any side
 effects it performs; an invented id drove the loop too. Now both are refused
 before your code is called.
 
+The refusal is also **atomic with the delivery it admits (GAP-058)**: the server
+verifies the id and records the admitted delivery in one locked transaction
+before `OnResult` runs, and it handles one result delivery per session at a
+time. So two deliveries raced against each other (a retry fired in parallel
+with the original, two clients on one chat id) produce ONE `OnResult` call —
+the loser gets `400 already been resolved` — instead of both passing the check
+and running your side effect twice. If your `OnResult` returns an error (or an
+invalid decision), the delivery releases its claim, so retrying that same
+`decision_id` afterwards is admitted normally.
+
 Client recipe, in full:
 
 1. Keep the decision id you are answering with your in-flight request.
@@ -459,7 +479,8 @@ curl -s http://127.0.0.1:9191/v1/sessions/sess-abc
 | `address already in use` | Another harness (or an example) already holds the port | Don't edit `main.go` — set `PORT` when you start the server and point the battery at the same port: `PORT=9293 go run main.go` + `h3-test --endpoint http://127.0.0.1:9293`. Every example honors `PORT` (default `9191`) |
 | Battery hangs on one test | Harness method blocked >30s | Server replies `504 JSON HARNESS_TIMEOUT` (`{"error":{"code":"HARNESS_TIMEOUT",...}}`); make the method return promptly or move work to a goroutine |
 | `400 INVALID_REQUEST` | Battery sends minimal requests | Don't require optional fields; only `session_id`, `message.role`, `identity.platform`, `identity.chat_id` are guaranteed |
-| `400 decision_id … already been resolved` | You retried a result that was already applied | Treat it as applied and re-`GET` the session instead of resending — see [result correlation](#result-correlation-and-at-least-once-delivery) |
+| `400 decision_id … already been resolved` | You retried a result that was already applied (or raced the first delivery of it) | Treat it as applied and re-`GET` the session instead of resending — see [result correlation](#result-correlation-and-at-least-once-delivery) |
+| `413 INVALID_REQUEST` | The request body is over the 10 MiB cap (GAP-060) | Send the documented fields only; a body that large is a bug on your side (or an unauthenticated probe) |
 | `500 INVALID_DECISION` | Decision missing its payload | Every `text` decision needs `Text`; every `end` needs `End`; `text.content` must be non-empty |
 | `no_models_available` fails | An `llm_call` was returned while `context.models` was empty | Branch on `len(req.Context.Models)` and answer with `text`/`end` instead of a model name — see [decision contracts](#decision-contracts-the-battery-enforces) |
 | `process_text_finished_false` fails | The `"do not finish"` prompt wasn't treated as a stream | Detect it with `strings.Contains(req.Message.Content, "do not finish")` and return `Finished: false` — see [decision contracts](#decision-contracts-the-battery-enforces) |

@@ -9,4 +9,4 @@
 # suite   = this repo's own Go test suite, as counted by
 #           `go test ./... -list '^Test'`.
 battery=46
-suite=161
+suite=165

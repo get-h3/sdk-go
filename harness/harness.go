@@ -5,6 +5,7 @@ package harness
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -50,6 +51,22 @@ type sessionEntry struct {
 	// invented id: req.DecisionID == LastResultDecisionID (and != in-flight)
 	// means the result for that decision was already applied (GAP-049).
 	LastResultDecisionID string
+	// ResultClaimID is the decision_id of the POST /v1/result delivery that is
+	// currently admitted for this session — i.e. the delivery whose OnResult
+	// call is running (GAP-058). Admission checks and this claim are written in
+	// ONE locked transaction before OnResult is invoked, so two concurrent
+	// deliveries of the SAME decision_id can never both pass the check and run
+	// the harness's side effect twice. It is cleared when the delivery finishes
+	// (any path, including an error or a panic), which leaves a failed delivery
+	// retryable.
+	ResultClaimID string
+	// deliveryMu serializes result deliveries for this session: one
+	// POST /v1/result at a time, so a delivery that arrives while another one
+	// for the same session is admitted waits for it and is then answered from
+	// the state that delivery left behind (200 when the id is the in-flight
+	// decision again, 400 when it was resolved) instead of racing its OnResult.
+	// The lock lives with the entry, so it is per session incarnation.
+	deliveryMu *sync.Mutex
 }
 
 // sessionStore is a thread-safe in-memory session tracker.
@@ -64,18 +81,75 @@ func newSessionStore() *sessionStore {
 	}
 }
 
-func (s *sessionStore) create(sessionID string) *sessionEntry {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry := &sessionEntry{
+// newSessionEntry builds a fresh session entry with a zeroed lifecycle: one
+// process turn is counted by the caller that creates it.
+func newSessionEntry(sessionID string, now time.Time) *sessionEntry {
+	return &sessionEntry{
 		SessionID:  sessionID,
 		Status:     "active",
-		StartedAt:  time.Now(),
-		LastActive: time.Now(),
+		StartedAt:  now,
+		LastActive: now,
 		TurnCount:  0,
+		deliveryMu: &sync.Mutex{},
 	}
-	s.sessions[sessionID] = entry
-	return entry
+}
+
+// beginProcessTurn admits one POST /v1/process for sessionID and accounts for
+// it, in a single locked transaction (GAP-059). It reproduces the documented
+// session status machine (docs/api-reference.md § Session status machine):
+//
+//   - session not in the store      -> created, status "active", and this call
+//     is turn 1 (started_at = now).
+//   - session "active"              -> the call ACCUMULATES: turn_count++ and
+//     started_at is preserved. A repeated POST /v1/process is a new turn of the
+//     same session, not a new session; resetting started_at/turn_count here (as
+//     this SDK used to, on every POST) buried the session's real history.
+//   - session "completed"           -> re-opened: status back to "active" and
+//     started_at/turn_count reset (the re-opening call is turn 1), matching the
+//     documented re-open semantics.
+//   - session "cancelled"           -> untouched: cancelled is terminal
+//     (GAP-028). The handler still runs OnProcess (permissive), but a late
+//     process must not revive the session or advance turn_count.
+//
+// Doing the check and the write under one lock also removes the old
+// snapshot-then-create race, in which two concurrent process requests for the
+// same new session could both "create" it and lose one call's turn.
+func (s *sessionStore) beginProcessTurn(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	entry, ok := s.sessions[sessionID]
+	if !ok {
+		entry = newSessionEntry(sessionID, now)
+		entry.TurnCount = 1
+		s.sessions[sessionID] = entry
+		return
+	}
+
+	if entry.Status == "cancelled" {
+		return
+	}
+
+	if entry.Status == "completed" {
+		// Re-open: a fresh lifecycle for the same session id. Decision
+		// bookkeeping from the completed lifecycle is dropped as well, so a
+		// result for the old lifecycle's last decision cannot be correlated
+		// against the re-opened session (the pre-GAP-059 code recreated the
+		// whole entry here, which cleared these fields too).
+		entry.Status = "active"
+		entry.StartedAt = now
+		entry.LastActive = now
+		entry.TurnCount = 1
+		entry.CurrentDecisionID = ""
+		entry.CurrentDecisionType = ""
+		entry.LastResultDecisionID = ""
+		entry.ResultClaimID = ""
+		return
+	}
+
+	entry.LastActive = now
+	entry.TurnCount++
 }
 
 // get returns the stored entry pointer for existence checks only. Callers MUST
@@ -91,8 +165,11 @@ func (s *sessionStore) get(sessionID string) *sessionEntry {
 // snapshot returns a copy of the session entry's fields taken under the read
 // lock. Handlers use it so that every read of a session entry is ordered
 // against the locked writes performed by update(). sessionEntry holds only
-// value types (strings, ints, time.Time), so the returned copy shares no
-// mutable state with the stored entry and is safe to use after RUnlock.
+// value types (strings, ints, time.Time) plus deliveryMu, a pointer to the
+// entry's own result-delivery lock — copying that pointer is the point: a
+// handler that must serialize against other deliveries of the same session
+// takes the lock through the copy it already holds. The returned copy shares no
+// OTHER mutable state with the stored entry and is safe to use after RUnlock.
 func (s *sessionStore) snapshot(sessionID string) (sessionEntry, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -117,6 +194,74 @@ func (s *sessionStore) delete(sessionID string) {
 	delete(s.sessions, sessionID)
 }
 
+// claimResultDelivery performs the atomic verify-and-claim for ONE
+// POST /v1/result delivery (GAP-058). It runs inside sessionStore.update, i.e.
+// under the session store's write lock, and either
+//
+//   - returns the message of the 400 INVALID_REQUEST the handler must write —
+//     the delivery is refused and NOTHING was claimed, or
+//   - records the delivery's claim on the entry and returns "", leaving the
+//     caller to invoke OnResult.
+//
+// The claim is written BEFORE OnResult runs, in the same critical section as
+// the check. That is the fix: the check and the act of claiming are one
+// transaction, so two concurrent deliveries of the SAME decision_id can no
+// longer both pass the check (as they did when the check and the
+// LastResultDecisionID record were separate lock acquisitions with OnResult in
+// between) and execute the harness's side effect twice.
+//
+// The correlation rules are unchanged (GAP-049): with a decision in flight,
+// the in-flight id is accepted, the already-resolved id is refused as "already
+// been resolved", and anything else is refused as a mismatch. A session with no
+// decision in flight is still accepted permissively. The one added refusal is a
+// delivery of an id another delivery currently holds claimed for this session.
+func claimResultDelivery(e *sessionEntry, sessionID, decisionID string) string {
+	if e.ResultClaimID == decisionID {
+		// This id is admitted and its OnResult is still running. Refusing
+		// here is what keeps the side effect single-shot even if a delivery
+		// ever reaches this point without the session's delivery lock.
+		return fmt.Sprintf("decision_id %q is already being processed for session %q",
+			decisionID, sessionID)
+	}
+
+	if e.CurrentDecisionID != "" {
+		switch decisionID {
+		case e.CurrentDecisionID:
+			// In-flight match — fall through to the claim below.
+		case e.LastResultDecisionID:
+			return fmt.Sprintf("decision_id %q has already been resolved for session %q",
+				decisionID, sessionID)
+		default:
+			return fmt.Sprintf("decision_id %q does not match the session's in-flight decision %q",
+				decisionID, e.CurrentDecisionID)
+		}
+	}
+
+	e.ResultClaimID = decisionID
+	// GAP-028: cancelled is terminal — a late result still reaches the harness
+	// (permissive) but must not increment turn_count or rewrite status.
+	if e.Status != "cancelled" {
+		e.LastActive = time.Now()
+		e.TurnCount++
+	}
+	return ""
+}
+
+// releaseResultClaim clears the claim recorded by claimResultDelivery for
+// decisionID, leaving every other field alone. It is called on EVERY exit of a
+// delivery — including OnResult returning an error, a decision that fails
+// validation, and a panic inside OnResult — so a delivery that did not resolve
+// its decision leaves the session retryable: the next delivery of that id is
+// checked against the unchanged bookkeeping instead of being refused as
+// still-claimed.
+func (s *sessionStore) releaseResultClaim(sessionID, decisionID string) {
+	s.update(sessionID, func(e *sessionEntry) {
+		if e.ResultClaimID == decisionID {
+			e.ResultClaimID = ""
+		}
+	})
+}
+
 // count returns the number of sessions currently present in the store — any
 // status (active, completed or cancelled), because a session leaves the store
 // only via DELETE /v1/sessions/{id}. It backs the SDK-filled active_sessions
@@ -128,6 +273,15 @@ func (s *sessionStore) count() int {
 	return len(s.sessions)
 }
 
+// maxRequestBodyBytes is the cap the SDK applies to a request body before
+// decoding it (GAP-060). Every POST handler used to hand r.Body straight to
+// json.Decoder, so an unauthenticated caller could make the process allocate
+// as much memory as it liked just by streaming a huge body (a body it never
+// even had to finish sending). http.MaxBytesReader stops the decoder one byte
+// past this limit, so the memory a request can cost is bounded by a constant
+// instead of by the client.
+const maxRequestBodyBytes int64 = 10 << 20 // 10 MiB
+
 // server holds the harness and session store for HTTP handlers.
 type server struct {
 	harness  Harness
@@ -137,17 +291,40 @@ type server struct {
 	// harness cannot know how long the HTTP server has been serving, so the
 	// server reports it.
 	startedAt time.Time
+	// maxBodyBytes overrides maxRequestBodyBytes for this server. Zero (the
+	// value NewHTTPServer leaves, and the value of a server a test builds by
+	// hand) means maxRequestBodyBytes; a test can set it to exercise the cap
+	// with a small body instead of a 10 MiB one.
+	maxBodyBytes int64
+}
+
+// bodyLimit is the effective POST body cap for this server.
+func (s *server) bodyLimit() int64 {
+	if s.maxBodyBytes > 0 {
+		return s.maxBodyBytes
+	}
+	return maxRequestBodyBytes
+}
+
+// newServer builds the server value behind NewHTTPServer's handler. It is split
+// out so tests can build a server and adjust its limits before wrapping it.
+func newServer(h Harness) *server {
+	return &server{
+		harness:   h,
+		sessions:  newSessionStore(),
+		startedAt: time.Now(),
+	}
 }
 
 // NewHTTPServer creates an http.Handler with all H3 endpoints.
 // The returned handler is ready to use with http.ListenAndServe.
 func NewHTTPServer(h Harness) http.Handler {
-	srv := &server{
-		harness:   h,
-		sessions:  newSessionStore(),
-		startedAt: time.Now(),
-	}
+	return newServer(h).handler()
+}
 
+// handler returns the fully wired handler: every H3 route, the JSON 404/405
+// interceptor, and the middleware chain.
+func (srv *server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", srv.healthHandler)
 	mux.HandleFunc("POST /v1/process", srv.processHandler)
@@ -233,6 +410,34 @@ func writeError(w http.ResponseWriter, status int, code protocol.ErrorCode, mess
 	})
 }
 
+// decodeBody caps r.Body and decodes it into v, reporting whether the handler
+// may continue (GAP-060). It writes the error response itself when it returns
+// false:
+//
+//   - the body passed this server's cap -> 413 INVALID_REQUEST naming the
+//     limit. The cap is applied with http.MaxBytesReader BEFORE decoding, so
+//     the decoder reads at most one byte past the limit and an oversized body
+//     is refused from a bounded amount of memory rather than buffered whole.
+//   - anything else (malformed JSON, wrong types, a truncated body) -> 400
+//     INVALID_REQUEST with the same message every handler produced before the
+//     cap existed.
+func (s *server) decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, s.bodyLimit())
+
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, protocol.ErrInvalidRequest,
+				fmt.Sprintf("request body exceeds the %d-byte limit", tooLarge.Limit))
+			return false
+		}
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			"failed to decode request body: "+err.Error())
+		return false
+	}
+	return true
+}
+
 // healthHandler handles GET /v1/health.
 //
 // Supplier split (GAP-050): the harness owns the identity/capability fields of
@@ -282,9 +487,7 @@ func (s *server) uptimeSeconds() int {
 // processHandler handles POST /v1/process.
 func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 	var req protocol.ProcessRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-			"failed to decode request body: "+err.Error())
+	if !s.decodeBody(w, r, &req) {
 		return
 	}
 
@@ -293,19 +496,15 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track session — GAP-028: cancelled is terminal. A late POST /v1/process
-	// for an already-cancelled session must not overwrite the entry or
-	// increment turn_count. Harness callbacks still run (permissive).
-	// GAP-043: read the status through snapshot() — a raw *sessionEntry from
-	// get() would be read without the store lock while concurrent requests
-	// mutate the same entry under it.
-	if entry, ok := s.sessions.snapshot(req.SessionID); !ok || entry.Status != "cancelled" {
-		s.sessions.create(req.SessionID)
-		s.sessions.update(req.SessionID, func(e *sessionEntry) {
-			e.LastActive = time.Now()
-			e.TurnCount++
-		})
-	}
+	// Track the session turn. GAP-028: cancelled is terminal — a late POST
+	// /v1/process for an already-cancelled session must not overwrite the entry
+	// or increment turn_count; the harness callback still runs (permissive).
+	// GAP-059: a repeated POST /v1/process on an ACTIVE session accumulates
+	// (turn_count++, started_at preserved) and only a COMPLETED session is
+	// re-opened with started_at/turn_count reset — the docs' semantics. The
+	// whole decision is one locked transaction, so no concurrent process can
+	// interleave a check with this write (GAP-043 read-side equivalent).
+	s.sessions.beginProcessTurn(req.SessionID)
 
 	decision, err := s.harness.OnProcess(&req)
 	if err != nil {
@@ -346,9 +545,7 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
 // resultHandler handles POST /v1/result.
 func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 	var req protocol.ResultRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-			"failed to decode request body: "+err.Error())
+	if !s.decodeBody(w, r, &req) {
 		return
 	}
 
@@ -357,10 +554,23 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.sessions.get(req.SessionID) == nil {
+	snap, ok := s.sessions.snapshot(req.SessionID)
+	if !ok {
 		writeError(w, http.StatusNotFound, protocol.ErrSessionNotFound,
 			"session not found: "+req.SessionID)
 		return
+	}
+
+	// GAP-058: one result delivery per session at a time. Deliveries that
+	// share a session serialise here, so a delivery arriving while another one
+	// for the same session is mid-flight waits for it and is then judged
+	// against the bookkeeping that delivery left behind — instead of racing its
+	// OnResult. GAP-049's correlation alone could not prevent that race: the
+	// check and the record it wrote were two separate lock acquisitions with
+	// OnResult in between.
+	if mu := snap.deliveryMu; mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
 	}
 
 	// GAP-049: correlate the result with the session's in-flight decision
@@ -384,33 +594,27 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 	// was created and the harness has not answered yet) the result is accepted
 	// as before: there is nothing to correlate against, and rejecting it would
 	// break the permissive contract for a session with no outstanding work.
-	if snap, ok := s.sessions.snapshot(req.SessionID); ok && snap.CurrentDecisionID != "" {
-		switch {
-		case req.DecisionID == snap.CurrentDecisionID:
-			// In-flight match — fall through to OnResult.
-		case req.DecisionID == snap.LastResultDecisionID:
-			writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-				fmt.Sprintf("decision_id %q has already been resolved for session %q",
-					req.DecisionID, req.SessionID))
-			return
-		default:
-			writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-				fmt.Sprintf("decision_id %q does not match the session's in-flight decision %q",
-					req.DecisionID, snap.CurrentDecisionID))
-			return
-		}
+	//
+	// GAP-058: that check and the CLAIM it implies are now ONE transaction
+	// under the store's write lock (claimResultDelivery), and the claim is
+	// recorded before OnResult is invoked below. Two deliveries of the same
+	// decision_id therefore cannot both pass the check: the first claims the id
+	// and advances the session, the second is judged against the state the
+	// first left behind and refused with 400.
+	reject := ""
+	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		reject = claimResultDelivery(e, req.SessionID, req.DecisionID)
+	})
+	if reject != "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, reject)
+		return
 	}
 
-	// GAP-028: cancelled is terminal — a late POST /v1/result for an
-	// already-cancelled session must not increment turn_count or rewrite
-	// status. Harness callbacks still run (permissive).
-	s.sessions.update(req.SessionID, func(e *sessionEntry) {
-		if e.Status == "cancelled" {
-			return
-		}
-		e.LastActive = time.Now()
-		e.TurnCount++
-	})
+	// The claim belongs to this delivery until it finishes. Releasing it on the
+	// way out (every path — success, OnResult error, invalid decision, panic)
+	// keeps a delivery that did NOT resolve its decision retryable: the retry
+	// is checked against bookkeeping this delivery never advanced.
+	defer s.sessions.releaseResultClaim(req.SessionID, req.DecisionID)
 
 	decision, err := s.harness.OnResult(&req)
 	if err != nil {
@@ -438,7 +642,13 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 	// fingerprint: once CurrentDecisionID moves on (to the decision just
 	// returned), a re-delivery of this same id matches LastResultDecisionID
 	// instead of the in-flight decision and is rejected as already resolved.
+	// GAP-058: this is also where the delivery's claim ends — the same
+	// transaction that advances the session releases it, so no window exists in
+	// which the session has advanced but the id still reads as claimed.
 	s.sessions.update(req.SessionID, func(e *sessionEntry) {
+		if e.ResultClaimID == req.DecisionID {
+			e.ResultClaimID = ""
+		}
 		if e.Status == "cancelled" {
 			return
 		}
@@ -456,9 +666,7 @@ func (s *server) resultHandler(w http.ResponseWriter, r *http.Request) {
 // cancelHandler handles POST /v1/cancel.
 func (s *server) cancelHandler(w http.ResponseWriter, r *http.Request) {
 	var req protocol.CancelRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-			"failed to decode request body: "+err.Error())
+	if !s.decodeBody(w, r, &req) {
 		return
 	}
 
