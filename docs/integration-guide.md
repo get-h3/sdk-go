@@ -191,14 +191,14 @@ curl -s -X POST http://127.0.0.1:9191/v1/process \
     "message": {"role": "user", "content": "hello from curl"},
     "context": {"history": []}
   }'
-# → {"decision":"text","decision_id":"echo-001","text":{"content":"Echo: hello from curl","finished":true}}
+# → {"decision":"text","decision_id":"f4be6275-852e-465c-9829-8047d713704c","text":{"content":"Echo: hello from curl","finished":true}}
 
 # 2. Report the result of that decision — decision_id comes from step 1
 curl -s -X POST http://127.0.0.1:9191/v1/result \
   -H 'Content-Type: application/json' \
   -d '{
     "session_id": "curl-demo-1",
-    "decision_id": "echo-001",
+    "decision_id": "f4be6275-852e-465c-9829-8047d713704c",
     "result": {"type": "tool_result", "success": true}
   }'
 
@@ -206,6 +206,12 @@ curl -s -X POST http://127.0.0.1:9191/v1/result \
 curl -s http://127.0.0.1:9191/v1/sessions/curl-demo-1
 curl -s -X DELETE http://127.0.0.1:9191/v1/sessions/curl-demo-1
 ```
+
+`decision_id` is **server-assigned**: the harness above never sets `DecisionID`,
+so the SDK server stamps a fresh UUID onto every decision (H3 protocol §2.1) —
+any harness that leaves it unset gets the same treatment. The id quoted here is
+from one live run and is already stale; **copy the `decision_id` from your own
+step-1 response** into step 2, never from this page.
 
 The README's [Test it with curl](../README.md#test-it-with-curl) shows the same
 sequence with real response bodies; [api-reference](api-reference.md) section 2 has
