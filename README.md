@@ -161,8 +161,14 @@ curl -s -X POST http://127.0.0.1:9191/v1/process \
 ```
 
 ```json
-{"decision":"text","decision_id":"echo-001","text":{"content":"Echo: hello from curl","finished":true}}
+{"decision":"text","decision_id":"f4be6275-852e-465c-9829-8047d713704c","text":{"content":"Echo: hello from curl","finished":true}}
 ```
+
+`decision_id` is **server-assigned** here: the quickstart harness never sets
+`DecisionID`, so the SDK server stamps a fresh UUID onto every decision (H3
+protocol §2.1) — any harness that leaves it unset gets the same treatment. The
+id above is from one live run and is already stale; **copy the `decision_id`
+from your own step-2 response** into step 4, never from this page.
 
 ```bash
 # 3. Inspect the session (HTTP 200)
@@ -173,7 +179,7 @@ curl -s -X POST http://127.0.0.1:9191/v1/result \
   -H 'Content-Type: application/json' \
   -d '{
     "session_id": "curl-demo-1",
-    "decision_id": "echo-001",
+    "decision_id": "f4be6275-852e-465c-9829-8047d713704c",
     "result": {"type": "tool_result", "success": true}
   }'
 
@@ -184,7 +190,7 @@ curl -s -X DELETE http://127.0.0.1:9191/v1/sessions/curl-demo-1
 Step 3 returns the live session state, for example:
 
 ```json
-{"session_id":"curl-demo-1","turn_count":1,"status":"active","current_decision":"echo-001","current_decision_type":"text"}
+{"session_id":"curl-demo-1","turn_count":1,"status":"active","current_decision":"f4be6275-852e-465c-9829-8047d713704c","current_decision_type":"text"}
 ```
 
 Every decision type, every error code and the full field reference:
