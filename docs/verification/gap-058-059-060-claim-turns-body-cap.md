@@ -109,10 +109,10 @@ call):
 
     go build ./...                     # OK
     go vet ./...                       # OK
-    go test -p 1 ./...                 # all packages ok (165 tests)
+    go test -p 1 ./...                 # all packages ok (168 tests)
     go test -race -p 1 ./harness/      # ok
     go test -p 1 -count=5 -run '<new + GAP-043 concurrency tests>' ./harness/   # ok, no flakes
-    sh scripts/check-test-count.sh     # PASS — suite=165 agrees with the live count
+    sh scripts/check-test-count.sh     # PASS — suite=168 agrees with the live count
     sh scripts/lint.sh                 # 7 issues (all pre-existing errcheck); HEAD has 8
 
 ## Scope note

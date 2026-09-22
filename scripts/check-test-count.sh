@@ -53,6 +53,18 @@
 #                              "> **Historical (YYYY-MM-DD):** ...", which is
 #                              what makes its exemption unambiguous to a reader.
 #
+# Identifier tokens are never counts (SDKGO-GAP-055). Before any count pattern
+# runs, each line is stripped of id tokens — `GAP-041`, `GAP-041/042/045/046`,
+# `SDKGO-GAP-055`, `DF-H3-SDK-GO-FOREMAN-8` — and of any digits/slash run with
+# more than one slash (a count quote is always N/N). Without that stripping the
+# retired-fraction alternative in (d) read the "045" inside `GAP-041/042/045/046`
+# as the retired total 45 and red-lined main on a doc that quoted no count at
+# all; the same over-match made `GAP-058/059` a "total claim 058/059" in (e) and
+# `GAP-058 tests` a "suite claim 58 tests". The exemption is the id token alone:
+# a real count beside one (`GAP-048/049/050 battery 44/45 PASSED`) still fails,
+# and a retired fraction with no surrounding prose at all (`| 43/44 |`) still
+# fails, because (d) remains context-free.
+#
 # Historical exemptions (deliberate, narrow):
 #   * CHANGELOG.md, e2e-output/, dist/, .coding-hermes/, .gitreins/, .vfs/ —
 #     release/board/state records, never rewritten.
@@ -216,6 +228,18 @@ fi
 # ports, dates and durations.
 RETIRED='4[345]-tests?|4[345] tests?|4[345] compliance|4[345] passed|4[345]-test |out of 4[345]|[0-9]+/4[345]|4[345]/[0-9]+'
 
+# SDKGO-GAP-055 — what an identifier token looks like, and what it is not.
+# ID_TOKEN: an upper-case id shaped `NAME[-SEGMENT...]-<digits>`, optionally
+#   carrying an /NNN id chain (`GAP-041/042/045/046`, `SDKGO-GAP-055`,
+#   `DF-H3-SDK-GO-FOREMAN-8`). Upper-case-first on purpose: `GAP-045` is an id,
+#   `battery-45` is prose and stays subject to every count pattern.
+# ID_CHAIN: a digits/slash run with more than one slash — an id or path chain,
+#   never a count quote (counts are only ever N/N).
+# Both reach awk through the environment (dynamic regexes in gsub) so no
+# backslash is escape-processed twice; see the RETIRED note below.
+ID_TOKEN='[A-Z][A-Za-z0-9]*(-[A-Za-z0-9]+)*-[0-9]+(/[0-9]+)*'
+ID_CHAIN='[0-9]+/[0-9]+/[0-9]+(/[0-9]+)*'
+
 BANNER_PATTERN='^[[:space:]]*>[[:space:]]*\*\*Historical \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\):'
 
 is_scanned() {
@@ -244,7 +268,7 @@ is_excluded() {
 # (head+grep for the banner, grep+sed+tr+wc+awk for the tables) — ~8 process
 # starts on each of ~59 artifacts, and the guard is itself invoked ~17x by
 # scripts/countguard/guard_test.go.
-export RETIRED BANNER_PATTERN ROOT
+export RETIRED BANNER_PATTERN ID_TOKEN ID_CHAIN ROOT
 
 if cd "$ROOT" && git rev-parse --git-dir >/dev/null 2>&1; then
     FILES=$(cd "$ROOT" && git ls-files)
@@ -282,6 +306,8 @@ if [ $# -gt 0 ]; then
             prelen = length(pre)
             retired = ENVIRON["RETIRED"]
             banner = ENVIRON["BANNER_PATTERN"]
+            idtok = ENVIRON["ID_TOKEN"]
+            idchain = ENVIRON["ID_CHAIN"]
             cur = ""
             nlines = 0
             banned = 0
@@ -290,25 +316,36 @@ if [ $# -gt 0 ]; then
             if (substr(p, 1, prelen) == pre) return substr(p, prelen + 1)
             return p
         }
-        function flush(   i, line, n, tok, parts, b, countable) {
+        # SDKGO-GAP-055 — every count pattern below runs on the line with its
+        # identifier tokens (and any multi-slash digits/slash chain) removed, so
+        # the "045" of `GAP-041/042/045/046` is never read as a count. Reported
+        # lines are the ORIGINAL text, not the scrubbed copy.
+        function scrub_ids(s,   t) {
+            t = s
+            gsub(idtok, " ", t)
+            gsub(idchain, " ", t)
+            return t
+        }
+        function flush(   i, line, work, n, tok, parts, b, countable) {
             if (cur == "") return
             if (banned == 0) {
                 for (i = 1; i <= nlines; i++) {
-                    if (buf[i] ~ retired && buf[i] !~ /count-ok-historical/) {
+                    if (scrub_ids(buf[i]) ~ retired && buf[i] !~ /count-ok-historical/) {
                         printf "%s:%d:%s\n", cur, i, buf[i]
                         seen[i] = 1
                     }
                 }
                 for (i = 1; i <= nlines; i++) {
                     if (buf[i] ~ /count-ok-historical/) continue
-                    line = buf[i]
+                    work = scrub_ids(buf[i])
+                    line = work
                     while (match(line, /[0-9][0-9][0-9][- ]tests?/)) {
                         n = substr(line, RSTART, RLENGTH) + 0
                         if (n != cs && !(i in seen))
                             printf "%s:%d: suite claim %d tests != %d: %s\n", cur, i, n, cs, buf[i]
                         line = substr(line, RSTART + RLENGTH)
                     }
-                    line = buf[i]
+                    line = work
                     countable = (tolower(buf[i]) ~ /tests?|battery|compliance|pytest|vitest|checks?|suite|passed/)
                     while (match(line, /[0-9]+\/[0-9]+/)) {
                         tok = substr(line, RSTART, RLENGTH)
@@ -376,9 +413,21 @@ if [ $# -gt 0 ]; then
         BEGIN {
             retired = ENVIRON["RETIRED"]
             banner = ENVIRON["BANNER_PATTERN"]
+            idtok = ENVIRON["ID_TOKEN"]
+            idchain = ENVIRON["ID_CHAIN"]
             cur = ""
             quoted = 0
             banned = 0
+        }
+        # Same id-token stripping as the sweep above (SDKGO-GAP-055): a dated
+        # record whose only count-shaped text is an id chain (`GAP-041/042/045/046`
+        # read as "45/046") is not a record quoting a retired count — this was
+        # the false positive that red-lined CI while every test passed.
+        function scrub_ids(s,   t) {
+            t = s
+            gsub(idtok, " ", t)
+            gsub(idchain, " ", t)
+            return t
         }
         FNR == 1 {
             if (cur != "" && quoted && banned == 0) print cur
@@ -387,7 +436,7 @@ if [ $# -gt 0 ]; then
             banned = 0
         }
         {
-            if ($0 ~ retired) quoted = 1
+            if (scrub_ids($0) ~ retired) quoted = 1
             if (FNR <= 25 && $0 ~ banner) banned = 1
         }
         END { if (cur != "" && quoted && banned == 0) print cur }

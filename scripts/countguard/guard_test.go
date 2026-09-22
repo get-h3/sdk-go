@@ -557,6 +557,96 @@ func TestGuardRequiresABannerOnDatedRecords(t *testing.T) {
 	}
 }
 
+// --- identifier chains are not counts (SDKGO-GAP-055) -----------------------
+
+// idChain and waveChain assemble GAP-shaped id chains from fragments: this file
+// is swept by the guard as well, so no retired-looking literal is written here
+// in one piece.
+func idChain() string { return "GAP-0" + retiredBattery() + "/046" }
+
+func waveChain() string { return "SDKGO-GAP-06" + "1/06" + "2" }
+
+// TestGuardIgnoresIDChainsInProse pins the SDKGO-GAP-055 false-positive class.
+// Before the fix three separate count patterns read an id chain as a quote:
+// check (d)'s retired-fraction alternative saw the "045" inside a
+// GAP-045/046-shaped chain as the retired total 45, check (e)'s fraction sweep
+// reported a "total claim" for a GAP-061/062-shaped chain on any line that also
+// mentions tests, and a three-digit id followed by the word "tests" tripped the
+// suite-claim scan. The document below quotes no count at all.
+func TestGuardIgnoresIDChainsInProse(t *testing.T) {
+	root, canon := scratchTree(t, 100)
+	write(t, filepath.Join(root, "notes.md"),
+		"- wave: "+waveChain()+" landed; "+idChain()+" tests and docs untouched.\n")
+
+	code, stdout, stderr := runGuard(t, scratchEnv(t, root, canon, nil))
+	if code != 0 {
+		t.Fatalf("id chains in prose failed the guard: exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "PASS") {
+		t.Errorf("guard did not report PASS:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "notes.md") {
+		t.Errorf("guard reported a hit on a line that quotes no count:\n%s", stdout)
+	}
+}
+
+// TestGuardDoesNotDemandABannerForAnIDChain is the CI failure itself: a dated
+// record whose only count-shaped text is an id chain does not quote a count, so
+// it must not have to declare itself historical. The second half proves the
+// banner gate still bites when the same record really does quote a retired one.
+func TestGuardDoesNotDemandABannerForAnIDChain(t *testing.T) {
+	root, canon := scratchTree(t, 100)
+	report := filepath.Join(root, "docs", "dogfood", "2026-01-01-integration.md")
+
+	write(t, report, "# Report\n\n- Evidence that the P2 rows "+idChain()+" remain open.\n")
+	code, stdout, stderr := runGuard(t, scratchEnv(t, root, canon, nil))
+	if code != 0 {
+		t.Fatalf("an id chain alone demanded a banner: exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	stale := retiredBattery() + "/" + retiredBattery()
+	write(t, report, "# Report\n\n- "+idChain()+" battery "+stale+" PASSED\n")
+	code, _, stderr = runGuard(t, scratchEnv(t, root, canon, nil))
+	if code != 1 {
+		t.Fatalf("a dated record quoting a retired count without a banner: exit %d, want 1 (stderr: %s)", code, stderr)
+	}
+	if !strings.Contains(stderr, "no point-in-time banner") {
+		t.Errorf("stderr does not ask for a banner:\n%s", stderr)
+	}
+}
+
+// TestGuardStillFlagsRetiredCountsBesideAnIDChain keeps the fix honest: the
+// exemption is the identifier token alone, so a retired count on the same line
+// as an id chain, and a retired fraction with no countable prose around it at
+// all, must both still fail.
+func TestGuardStillFlagsRetiredCountsBesideAnIDChain(t *testing.T) {
+	root, canon := scratchTree(t, 100)
+	stale := retiredBattery() + "/" + retiredBattery()
+
+	for _, tc := range []struct {
+		name    string
+		content string
+	}{
+		{"beside an id chain", "- " + idChain() + " battery " + stale + " PASSED\n"},
+		{"alone in a table cell", "| " + stale + " |\n"},
+		{"in a dated record on the chain line", "- " + waveChain() + " scored " + stale + "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			write(t, filepath.Join(root, "drift.md"), tc.content)
+			code, stdout, stderr := runGuard(t, scratchEnv(t, root, canon, nil))
+			if code != 1 {
+				t.Fatalf("exit = %d, want 1 (stderr: %s)", code, stderr)
+			}
+			if !strings.Contains(stdout, "drift.md:1") {
+				t.Errorf("the report does not name file:line:\n%s", stdout)
+			}
+			if !strings.Contains(stderr, "stale count literal") {
+				t.Errorf("stderr does not name the class:\n%s", stderr)
+			}
+		})
+	}
+}
+
 func TestGuardFailsOnAPathWithWhitespace(t *testing.T) {
 	root, canon := scratchTree(t, 100)
 	// A file list that word-splits would silently scan the wrong paths.
