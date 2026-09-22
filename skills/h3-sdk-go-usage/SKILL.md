@@ -40,7 +40,7 @@ go mod edit -replace github.com/get-h3/sdk-go=/path/to/sdk-go && go get github.c
 
 # Verify
 h3-test --endpoint http://localhost:9191   # exit 0 = compliant
-go test ./... -count=1                     # repo suite (161 Go tests), ~3s
+go test ./... -count=1                     # repo suite (165 Go tests), ~3s
 ```
 
 ## The right way (proven patterns)
@@ -161,23 +161,40 @@ Client side (what the body must send back): `result.type: "tool_result"`,
 your tool produced, `result.success`, `result.duration_ms`. Omitting `success`
 decodes as `false` — a harness that trusts it will take its error path.
 
-**Do your own correlation if your tools have side effects.** `/v1/result` does
-not check that `decision_id` matches the in-flight decision, and a duplicate
-delivery re-invokes `OnResult` (GAP-049) — so a retry can run your tool step
-twice. Track the last decision id per session and ignore repeats.
+**Correlation is the server's job — you do NOT need to track decision ids to
+avoid double side effects (GAP-049 + GAP-058).** `/v1/result` verifies that
+`decision_id` is the session's in-flight decision before `OnResult` runs, refuses
+a replay/stale/invented id with `400 INVALID_REQUEST`, and admits-and-claims the
+delivery atomically (one delivery per session at a time), so two deliveries of
+the same id raced against each other still produce exactly one `OnResult` call.
+Answer a `400 already been resolved` by re-`GET`ting the session instead of
+resending. Only a delivery whose `OnResult` itself failed (500) is retryable
+with the same id — its claim is released.
 
-## Known traps (verified 2026-09-05 and 2026-09-18 — do not get bitten)
+## Known traps (verified 2026-09-05, 2026-09-18 and 2026-09-22 — do not get bitten)
 
-- **`/v1/result` is uncorrelated and not idempotent (GAP-049, 2026-09-18).** Any
-  `decision_id` is accepted (a made-up one still drives the loop), and sending
-  the same `decision_id` twice calls `OnResult` twice — verified: two identical
-  `tool_call`s emitted from one repeated `tool_result`. Guard in your harness if
-  your handler has side effects.
-- **`/v1/cancel` does not validate its body like the other endpoints (GAP-048,
-  2026-09-18).** `{"reason":"system"}` with no `session_id` returns
-  `404 SESSION_NOT_FOUND "session not found: "` (not `400 INVALID_REQUEST`), and
-  an out-of-enum `reason` is accepted with `200`. Malformed JSON still 400s.
-  Don't read that 404 as "the session vanished" — check your own request first.
+- **`/v1/result` IS correlated and single-shot now — do NOT code around it
+  (GAP-049 + GAP-058).** Both used to be real: any `decision_id` was accepted
+  (a made-up one drove the loop) and a repeated one ran `OnResult` twice. Now
+  the id is checked against the session's in-flight decision before `OnResult`,
+  and the check is atomic with the claim it takes, so N concurrent deliveries of
+  one id give ONE `OnResult` call and `400 already been resolved` for the rest
+  (`docs/api-reference.md` §`POST /v1/result`). A 500 from your own `OnResult`
+  releases the claim, so a retry with that id is admitted.
+- **A repeated `POST /v1/process` ACCUMULATES, it does not restart (GAP-059).**
+  `turn_count` + 1 with `started_at` preserved while the session is `active`;
+  only re-opening a `completed` session resets both. Reading `started_at` as
+  "when this request arrived" is wrong — it is when the current lifecycle began.
+- **Every `POST` body is capped at 10 MiB (GAP-060).** The cap is applied before
+  decoding, so an oversized body answers `413 INVALID_REQUEST`
+  (`request body exceeds the N-byte limit`) and never reaches your methods.
+  Malformed bodies under the cap keep their `400 INVALID_REQUEST` message.
+- **`/v1/cancel` validates its body before the session lookup (GAP-048, FIXED).**
+  It was real in v0.1.6: `{"reason":"system"}` with no `session_id` returned
+  `404 SESSION_NOT_FOUND "session not found: "`. Now a missing `session_id` or an
+  out-of-enum `reason` is `400 INVALID_REQUEST` naming the field, and `404` is
+  reserved for a valid cancel naming an unknown session. Don't read a `404` as
+  "the session vanished" — check your request first.
 - **Health metrics are SDK-filled (GAP-050) — FIXED, do not code around it.**
   It was real in v0.1.6: `NewHTTPServer` passed `Health()` through untouched, so
   `uptime_seconds` was absent from every response and `active_sessions` existed
