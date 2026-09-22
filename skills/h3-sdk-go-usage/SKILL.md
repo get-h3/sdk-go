@@ -40,7 +40,7 @@ go mod edit -replace github.com/get-h3/sdk-go=/path/to/sdk-go && go get github.c
 
 # Verify
 h3-test --endpoint http://localhost:9191   # exit 0 = compliant
-go test ./... -count=1                     # repo suite (160 Go tests), ~3s
+go test ./... -count=1                     # repo suite (161 Go tests), ~3s
 ```
 
 ## The right way (proven patterns)

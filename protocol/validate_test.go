@@ -520,3 +520,29 @@ func TestResultRequestValidate(t *testing.T) {
 		}
 	})
 }
+
+// TestResultRequestValidate_ValidTypes is the GAP-061 per-enum-value table:
+// every valid result.type constant must pass ResultRequest.Validate() (the
+// enum-rejection default branch must fire only for values OUTSIDE the six).
+func TestResultRequestValidate_ValidTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		typ  ResultType
+	}{
+		{"tool_result", ResultTool},
+		{"llm_response", ResultLLMResponse},
+		{"text_sent", ResultTextSent},
+		{"delegate_result", ResultDelegate},
+		{"wait_timeout", ResultWaitTimeout},
+		{"error", ResultError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := ResultRequest{SessionID: "sess-1", DecisionID: "dec-1",
+				Result: Result{Type: tc.typ, ToolName: "read_file", Success: BoolPtr(true)}}
+			if err := req.Validate(); err != nil {
+				t.Errorf("type %q: expected nil error, got %v", tc.typ, err)
+			}
+		})
+	}
+}
