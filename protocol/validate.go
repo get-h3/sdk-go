@@ -64,13 +64,14 @@ func (r *CancelRequest) Validate() error {
 }
 
 // Validate checks that a ResultRequest is well-formed.
-// Required fields: session_id, decision_id and result.type. decision_id is not
-// decoration: it names the decision the result is FOR, and the harness
-// correlates it against the session's in-flight decision before OnResult runs
-// (GAP-049). A request that fails this check is rejected with 400
-// INVALID_REQUEST before the session store is consulted, so an empty
-// decision_id can never be read as "a result for whatever happened to be in
-// flight".
+// Required fields: session_id, decision_id, result.type and result.success.
+// decision_id is not decoration: it names the decision the result is FOR, and
+// the harness correlates it against the session's in-flight decision before
+// OnResult runs (GAP-049). result.type must be one of the ResultType enum
+// values and result.success must be present (GAP-061): the JSON Schema marks
+// both required (protocol/schemas/v1/result-request.json), so "banana" or a
+// missing success must be rejected with 400 INVALID_REQUEST before the session
+// store is consulted, never handed to the harness as a well-formed result.
 func (r *ResultRequest) Validate() error {
 	if r.SessionID == "" {
 		return newValidationError(ErrInvalidRequest, "session_id", "session_id is required")
@@ -80,6 +81,14 @@ func (r *ResultRequest) Validate() error {
 	}
 	if r.Result.Type == "" {
 		return newValidationError(ErrInvalidRequest, "result.type", "result.type is required")
+	}
+	switch r.Result.Type {
+	case ResultTool, ResultLLMResponse, ResultTextSent, ResultDelegate, ResultWaitTimeout, ResultError:
+	default:
+		return newValidationError(ErrInvalidRequest, "result.type", "result.type must be one of tool_result, llm_response, text_sent, delegate_result, wait_timeout, error")
+	}
+	if r.Result.Success == nil {
+		return newValidationError(ErrInvalidRequest, "result.success", "result.success is required")
 	}
 	return nil
 }

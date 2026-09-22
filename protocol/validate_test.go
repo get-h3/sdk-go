@@ -424,7 +424,7 @@ func TestCancelRequestValidate_ValidReasons(t *testing.T) {
 // empty id reached the handler and could not be correlated with anything the
 // session had in flight.
 func TestResultRequestValidate(t *testing.T) {
-	validResult := Result{Type: ResultTool, ToolName: "read_file", Success: true}
+	validResult := Result{Type: ResultTool, ToolName: "read_file", Success: BoolPtr(true)}
 
 	tests := []struct {
 		name      string
@@ -450,6 +450,13 @@ func TestResultRequestValidate(t *testing.T) {
 			wantField: "result.type",
 			wantMsg:   "result.type is required",
 		},
+		{
+			name: "invalid result.type",
+			req: ResultRequest{SessionID: "sess-1", DecisionID: "dec-1",
+				Result: Result{Type: ResultType("banana"), ToolName: "read_file", Success: BoolPtr(true)}},
+			wantField: "result.type",
+			wantMsg:   "result.type must be one of tool_result, llm_response, text_sent, delegate_result, wait_timeout, error",
+		},
 	}
 
 	for _, tc := range tests {
@@ -473,6 +480,38 @@ func TestResultRequestValidate(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("missing result.success", func(t *testing.T) {
+		req := ResultRequest{SessionID: "sess-1", DecisionID: "dec-1",
+			Result: Result{Type: ResultTool, ToolName: "read_file", Success: nil}}
+		err := req.Validate()
+		if err == nil {
+			t.Fatal("expected an error for missing result.success, got nil")
+		}
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("error is not *ValidationError, got %T: %v", err, err)
+		}
+		if ve.Code != ErrInvalidRequest {
+			t.Errorf("Code = %q, want %q", ve.Code, ErrInvalidRequest)
+		}
+		if ve.Error() != "result.success is required" {
+			t.Errorf("Message = %q, want %q", ve.Error(), "result.success is required")
+		}
+		if field, ok := ve.Details["field"]; !ok || field != "result.success" {
+			t.Errorf("Details[field] = %v, want %q", field, "result.success")
+		}
+	})
+
+	t.Run("valid result.success values", func(t *testing.T) {
+		for _, success := range []*bool{BoolPtr(true), BoolPtr(false)} {
+			req := ResultRequest{SessionID: "sess-1", DecisionID: "dec-1",
+				Result: Result{Type: ResultTool, ToolName: "read_file", Success: success}}
+			if err := req.Validate(); err != nil {
+				t.Errorf("success=%v: expected nil error, got %v", *success, err)
+			}
+		}
+	})
 
 	t.Run("fully populated", func(t *testing.T) {
 		req := ResultRequest{SessionID: "sess-1", DecisionID: "dec-1", Result: validResult}

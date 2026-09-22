@@ -383,8 +383,9 @@ func (a *Adapter) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, e
 // OnResult implements harness.Harness: feeds tool results back to Consensus and
 // returns the next decision, echoing the session's conversation history.
 func (a *Adapter) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
+	success := req.Result.Success != nil && *req.Result.Success
 	log.Printf("[H3] RESULT session=%s decision=%s type=%s tool=%s success=%v",
-		req.SessionID, trunc(req.DecisionID, 12), req.Result.Type, req.Result.ToolName, req.Result.Success)
+		req.SessionID, trunc(req.DecisionID, 12), req.Result.Type, req.Result.ToolName, success)
 
 	a.mu.RLock()
 	consensusID, ok := a.sessions[req.SessionID]
@@ -405,7 +406,7 @@ func (a *Adapter) OnResult(req *protocol.ResultRequest) (*protocol.Decision, err
 
 	// Only feed tool results back to Consensus — text_sent is just a poll
 	if req.Result.Type == protocol.ResultTool {
-		_, _ = a.consensusSendToolResult(consensusID, req.Result.ToolName, req.Result.Success, req.Result.Data)
+		_, _ = a.consensusSendToolResult(consensusID, req.Result.ToolName, success, req.Result.Data)
 	}
 
 	// Poll for response (give Consensus time to process)

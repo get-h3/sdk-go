@@ -87,7 +87,7 @@ func TestSendResult(t *testing.T) {
 
 	result := protocol.Result{
 		Type:    protocol.ResultTool,
-		Success: true,
+		Success: protocol.BoolPtr(true),
 	}
 
 	dec, err := mh.SendResult("sess-001", "dec-001", result)
@@ -137,7 +137,7 @@ func TestWithEchoHarness(t *testing.T) {
 	// Step 2: Send result → expect end
 	result := protocol.Result{
 		Type:    protocol.ResultTextSent,
-		Success: true,
+		Success: protocol.BoolPtr(true),
 	}
 	dec2, err := mh.SendResult("sess-001", dec.DecisionID, result)
 	AssertNoError(t, err)
@@ -349,7 +349,7 @@ func TestSendMessagePanicRecovery(t *testing.T) {
 func TestSendResultPanicRecovery(t *testing.T) {
 	mh := NewMockHermes(&panicHarness{})
 
-	dec, err := mh.SendResult("sess-001", "dec-001", protocol.Result{Type: protocol.ResultTool, Success: true})
+	dec, err := mh.SendResult("sess-001", "dec-001", protocol.Result{Type: protocol.ResultTool, Success: protocol.BoolPtr(true)})
 	if err == nil {
 		t.Fatal("expected error from panicking harness, got nil")
 	}

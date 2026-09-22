@@ -293,7 +293,7 @@ func (h *ConsensusHarness) OnResult(req *protocol.ResultRequest) (*protocol.Deci
 
 	// Final turn — summarise the result data and end the session.
 	finalResult := "Deliberation complete."
-	if req.Result.Type == protocol.ResultTool && req.Result.Success {
+	if req.Result.Type == protocol.ResultTool && req.Result.Success != nil && *req.Result.Success {
 		if data, ok := req.Result.Data.(map[string]any); ok {
 			if output, ok := data["output"].(string); ok && output != "" {
 				finalResult = output

@@ -144,7 +144,7 @@ func TestConformanceHarness_FullLoop(t *testing.T) {
 	// Step 2: result
 	res := protocol.Result{
 		Type:    protocol.ResultTool,
-		Success: true,
+		Success: protocol.BoolPtr(true),
 		Data:    map[string]any{"output": "hello"},
 	}
 	dec2, err := mh.SendResult(sessionID, dec1.DecisionID, res)
@@ -179,7 +179,7 @@ func TestConformanceHarness_SessionIsolation(t *testing.T) {
 	AssertTextContent(t, decB, "The answer is 42.", true)
 
 	// Force a result on sess-a and verify it does not affect sess-b.
-	res := protocol.Result{Type: protocol.ResultTool, Success: true}
+	res := protocol.Result{Type: protocol.ResultTool, Success: protocol.BoolPtr(true)}
 	decA2, err := mh.SendResult("sess-a", decA.DecisionID, res)
 	AssertNoError(t, err)
 	AssertDecisionType(t, decA2, protocol.DecisionText)
@@ -191,7 +191,7 @@ func TestConformanceHarness_ResultError(t *testing.T) {
 
 	dec, err := mh.SendResult("sess-error", "dec-001", protocol.Result{
 		Type:    protocol.ResultError,
-		Success: false,
+		Success: protocol.BoolPtr(false),
 	})
 	AssertNoError(t, err)
 	AssertDecisionType(t, dec, protocol.DecisionEnd)
