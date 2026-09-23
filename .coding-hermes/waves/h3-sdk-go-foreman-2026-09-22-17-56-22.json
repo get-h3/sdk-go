@@ -1,0 +1,41 @@
+{
+  "tick_id": "h3-sdk-go-foreman-2026-09-22-17-56-22",
+  "tick_number": 264,
+  "created_at": "2026-09-22T13:10:00-05:00",
+  "project": "h3-sdk-go",
+  "workdir": "/home/kara/get-h3/sdk-go",
+  "recovery_of": {
+    "tick_id": "h3-sdk-go-foreman-2026-09-22-16-01-13",
+    "result": "PARTIAL — GAP-061 landed and merged on main (45c63e7, merge 1692cbd, judge follow-up 7503728; tier2 PASS verdict 89afa3b1 after an INCOMPLETE 1st pass d4527f06 was remediated with a per-enum table). Pushed to origin this tick: origin/main = 6f419a7 (includes unrelated h3-family consolidation commit 6f419a7 landed mid-tick by an external actor — this lane h3-sdk-go-foreman is now scheduler-paused and rows were mirrored to the canonical h3 board as SDKGO-*). GAP-058 and README-ECHO workers died at dispatch AGAIN ('every provider in the fallback chain kept failing over'; sessions 20260922_111300_65cc6e / aa51c3 / 2169fc) — zero commits, branches at base. The GAP-058 worker DID run ~20 min first and left 418 lines of test-only (tests-first) uncommitted work in its worktree: preserved as .coding-hermes/waves/t263-GAP-058-test-partial.diff (518 lines). Fixup workers re-dispatched in FRESH worktrees at base 6f419a7 with re-apply briefs."
+  },
+  "budget": 10,
+  "workers": [
+    {
+      "task_id": "GAP-058",
+      "tasks_covered": ["GAP-058", "GAP-059"],
+      "why_combined": "Both P1s live in harness/harness.go processHandler/resultHandler — same file, not independently mergeable.",
+      "scope_note": "Tests-first fixup: the preserved 418-line test diff is the starting point; implement the store/handler fix under it.",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-GAP-058",
+      "branch": "wt/GAP-058",
+      "base_sha": "6f419a7",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t264_brief_gap058059.md"
+    },
+    {
+      "task_id": "GAP-062",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-README-ECHO",
+      "branch": "wt/README-ECHO",
+      "base_sha": "6f419a7",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t264_brief_readme.md"
+    }
+  ],
+  "lane_probe": "LANE_OK glm-5.3-flash@zai-glm 20260922_130459_6a007e",
+  "independence_check": "Worker 1 = harness/harness.go + harness/harness_test.go; Worker 2 = README.md + docs/integration-guide.md + docs/verification/. Disjoint file sets; no depends_on edges (verified both boards). GAP-061 already merged, so only 2 workers this wave.",
+  "merge_order": ["GAP-058", "README-ECHO", "board bookkeeping (canonical h3 board + this repo's board)", "push"],
+  "merge_note": "Serial --no-ff merges, full gate re-run after each (guard 4/4 backgrounded, build/vet/gofmt, go test -short -p 1, count guard). Smoke_echo.sh (27 checks) + h3-test battery on the final merged tree only, :9191 discipline. GAP-062 probes on :9295 in its own worktree. Recovery of manifest 16-01-13: close it with finished_at + recovery_result.",
+  "finished_at": null,
+  "status": "in_progress"
+}

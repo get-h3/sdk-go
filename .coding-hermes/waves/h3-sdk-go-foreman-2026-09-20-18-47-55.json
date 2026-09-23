@@ -7,11 +7,23 @@
   "recovery": {
     "recovered_wave_tick": "h3-sdk-go-foreman-2026-09-20-18-04-04",
     "workers": [
-      {"task_id": "GAP-042", "branch": "wt/GAP-042", "sha": "a776335", "judge": "PASS 82078d91", "merge": "MERGED 5634d3a"},
-      {"task_id": "GAP-054", "branch": "wt/GAP-054", "sha": "00b6615", "judge": "PASS 84890c87", "merge": "MERGED 287076d"}
+      {
+        "task_id": "GAP-042",
+        "branch": "wt/GAP-042",
+        "sha": "a776335",
+        "judge": "PASS 82078d91",
+        "merge": "MERGED 5634d3a"
+      },
+      {
+        "task_id": "GAP-054",
+        "branch": "wt/GAP-054",
+        "sha": "00b6615",
+        "judge": "PASS 84890c87",
+        "merge": "MERGED 287076d"
+      }
     ],
     "result": "already recovered by tick #260 (commit c2ff54f); both branches merged, worktrees reaped, board rows complete, CI green on c2ff54f",
-    "action_taken": "none needed — verified merge state, worktree list (none left), board rows complete, judge verdicts recorded"
+    "action_taken": "none needed \u2014 verified merge state, worktree list (none left), board rows complete, judge verdicts recorded"
   },
   "budget": 12,
   "workers": [
@@ -35,7 +47,12 @@
     },
     {
       "task_id": "DF-README-CONSUMER",
-      "tasks_covered": ["DF-H3-SDK-GO-FOREMAN-3", "DF-H3-SDK-GO-FOREMAN-5", "DF-H3-SDK-GO-FOREMAN-7", "DF-H3-SDK-GO-FOREMAN-10"],
+      "tasks_covered": [
+        "DF-H3-SDK-GO-FOREMAN-3",
+        "DF-H3-SDK-GO-FOREMAN-5",
+        "DF-H3-SDK-GO-FOREMAN-7",
+        "DF-H3-SDK-GO-FOREMAN-10"
+      ],
       "worktree": "/home/kara/worktrees/sdk-go-README-CONSUMER",
       "branch": "wt/README-CONSUMER",
       "base_sha": "c2ff54f",
@@ -45,6 +62,13 @@
     }
   ],
   "independence_check": "GAP-053 touches scripts/check-test-count.sh + scripts/countguard/ only; GAP-051 touches docs/api-reference.md + docs/integration-guide.md only; README-CONSUMER touches README.md + docs/examples.md only. Three disjoint file sets, no depends_on edges between the rows. Middle-out: two doc/data bands and one script band, no shared internal package.",
-  "merge_order": ["GAP-053", "GAP-051", "README-CONSUMER", "board bookkeeping"],
-  "merge_note": "Docs-only branches merge trivially; the scripts branch re-runs countguard + the full guard on the merged tree. Gate after EACH merge."
+  "merge_order": [
+    "GAP-053",
+    "GAP-051",
+    "README-CONSUMER",
+    "board bookkeeping"
+  ],
+  "merge_note": "Docs-only branches merge trivially; the scripts branch re-runs countguard + the full guard on the merged tree. Gate after EACH merge.",
+  "finished_at": "2026-09-22T10:40:00-05:00",
+  "recovery_result": "Complete - all 3 workers were already merged by tick #261 itself (merge commits 1c0dee7 GAP-053, 7bfcdfe GAP-051, e0405a3 README-CONSUMER covering DF-3/5/7/10, all ancestors of main). Branches wt/GAP-053, wt/GAP-051, wt/README-CONSUMER deleted post-merge (rev-parse fails; worktree list shows only main checkout). Board rows GAP-053/GAP-051/DF-3/DF-5/DF-7/DF-10 all status=complete. No fixup work needed. Verified by recovery tick h3-sdk-go-foreman-2026-09-22-10-30-14."
 }

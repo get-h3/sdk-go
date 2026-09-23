@@ -2,6 +2,28 @@
 
 All notable changes to the H3 Go SDK.
 
+## [0.1.8] — 2026-09-23
+
+### Fixed
+- `POST /v1/result` admission is now a single locked transaction: the decision_id correlation check and the delivery claim (`sessionEntry.ResultClaimID`) are recorded under the store's write lock BEFORE `OnResult` runs, and result deliveries for a session serialise on a per-entry lock — two concurrent deliveries of the same decision_id can no longer both pass the snapshot check and double-execute the harness side effect. The claim is released on every exit (OnResult error, invalid decision, panic), so a delivery that did not resolve its decision stays retryable; cancelled sessions remain permissive and terminal. Measured live: 8 concurrent deliveries of one id went from 8x200 / 8 OnResult calls / turn_count 9 to 1x200 + 7x400 / 1 OnResult call / turn_count 2. (GAP-058)
+- `POST /v1/process` create-or-update no longer resets the session lifecycle on every request: a new session starts at turn 1, an ACTIVE session accumulates (`turn_count++`, `started_at` preserved), and only a COMPLETED session re-opens with `started_at`/`turn_count` reset — matching the documented status machine. The create/re-open/accumulate decision is one locked transaction, which also removes the snapshot-then-create race between two concurrent processes for one new session. (GAP-059)
+- All three POST handlers decode the request body through a 10 MiB `http.MaxBytesReader` (`decodeBody`, override via the server's body-limit knob), so an unauthenticated oversized body can no longer make a harness allocate without bound; over-limit requests get the JSON error envelope, and normal-size requests are unchanged. (GAP-060)
+- `ResultRequest.Validate` enforces the `result.type` enum (`tool_result`, `llm_response`, `text_sent`, `delegate_result`, `wait_timeout`, `error`) and requires `result.success`: `Result.Success` is now `*bool` (nil -> `400 INVALID_REQUEST`), matching the upstream schema's required array, with `protocol.BoolPtr` added for construction and all read/construct sites updated. A `result.type="banana"` can no longer drive `OnResult` with `200`. (GAP-061)
+- `scripts/check-test-count.sh` no longer false-positives on GAP-id chains: identifier tokens and multi-slash digits/slash chains (`GAP-041/042/045/046`) are stripped before count matching, so a doc that never quotes a battery count passes without carrying the old banner workaround, while a real stale-count literal still fails. (GAP-055)
+
+### Added
+- `examples/wait-resume`: async wait/resume pattern — goroutine + poll endpoint + `OnResult(wait_timeout)` -> text continuation. (GAP-042)
+- `examples/llm-roundtrip`: llm_call round-trip consumer example (deliberator + scripted fake-Hermes client). (GAP-046)
+- The battery parity check is loud and fail-able when the sibling shim checkout is absent: a boxed warning names the path, and `H3_SDK_REQUIRE_SHIM_PARITY=1` turns the case into a non-zero exit for release gating. (GAP-053)
+
+### Docs
+- The real session status machine is documented: full transition table on `GET /v1/sessions/{id}`, `expired` is unreachable (no TTL), and `finished:true` ends the TURN, not the session. (GAP-051)
+- `docs/api-reference.md` carries the Go const identifiers for `ResultType`, `HistoryRole`, `SessionStatus` and `HealthStatus`. (GAP-054)
+- `message.role` validation documented as equality with `user`, not non-empty. (GAP-041)
+- README + integration-guide curl walkthroughs use real server-assigned decision_ids (the quickstart harness auto-fills a UUIDv4), live-verified verbatim; the README quickstart `main` honours `PORT` via `harness.ListenAddr()` so the documented sequence runs as written on an override port. (GAP-062)
+- `testbed.NewMockHermes` godoc states the harness-vs-handler contract (it takes `harness.Harness`, not the `http.Handler` from `NewHTTPServer`) and the `*protocol.Decision` return, with a compiling example. (DF-H3-SDK-GO-FOREMAN-9)
+- README makes clone-to-46/46 self-verifiable: verify section with the shim install + battery lines, Go 1.22+ toolchain requirement, inside-clone vs copy-out module paths, and quoted exit codes. (DF-H3-SDK-GO-FOREMAN-3/5/7/10)
+
 ## [0.1.7] — 2026-09-20
 
 ### Fixed

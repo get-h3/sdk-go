@@ -1,0 +1,57 @@
+{
+  "tick_id": "h3-sdk-go-foreman-2026-09-22-16-01-13",
+  "tick_number": 263,
+  "created_at": "2026-09-22T11:15:00-05:00",
+  "project": "h3-sdk-go",
+  "workdir": "/home/kara/get-h3/sdk-go",
+  "recovery_of": {
+    "tick_id": "h3-sdk-go-foreman-2026-09-22-10-30-14",
+    "finding": "All 3 t262 workers died at dispatch (~05:44 local) \u2014 'every provider in the fallback chain kept failing over'; zero commits, branches sat at base da220e0. GAP-058 worktree had 109 lines of uncommitted partial work (preserved: .coding-hermes/waves/t262-GAP-058-dead-worker-partial.diff). Stale worktrees/branches wiped and re-created fresh. Lane re-probed LANE_OK at 11:03."
+  },
+  "budget": 9,
+  "workers": [
+    {
+      "task_id": "GAP-058",
+      "tasks_covered": [
+        "GAP-058",
+        "GAP-059"
+      ],
+      "why_combined": "Both P1s live in harness/harness.go processHandler/resultHandler \u2014 same file, not independently mergeable.",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-GAP-058",
+      "branch": "wt/GAP-058",
+      "base_sha": "da220e0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t263_brief_gap058059.md"
+    },
+    {
+      "task_id": "GAP-061",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-GAP-061",
+      "branch": "wt/GAP-061",
+      "base_sha": "da220e0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t263_brief_gap061.md"
+    },
+    {
+      "task_id": "GAP-062",
+      "worktree": "/home/kara/worktrees/h3-sdk-go-README-ECHO",
+      "branch": "wt/README-ECHO",
+      "base_sha": "da220e0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t263_brief_readme.md"
+    }
+  ],
+  "lane_probe": "LANE_OK glm-5.3-flash@zai-glm 20260922_110349_494b21",
+  "independence_check": "Worker 1 = harness/harness.go + harness_test.go; Worker 2 = protocol/validate.go (+types.go); Worker 3 = README.md + docs/integration-guide.md + docs/verification/. Disjoint file sets; rows GAP-058..062 have no depends_on edges.",
+  "merge_order": [
+    "GAP-061",
+    "GAP-058",
+    "README-ECHO",
+    "board bookkeeping"
+  ],
+  "merge_note": "Serial --no-ff merges, gate after each. Smoke/h3-test battery on the final merged tree only (worker 1 runs smoke in its own worktree pre-merge; worker 3 probes on :9295).",
+  "finished_at": "2026-09-22T13:15:00-05:00",
+  "recovery_result": "RECOVERED by tick h3-sdk-go-foreman-2026-09-22-17-56-22: GAP-061 landed on main (45c63e7 + merge 1692cbd + judge follow-up 7503728, tier2 PASS 89afa3b1) and was PUSHED this tick; GAP-058/062 workers had died at dispatch again (provider failover) with zero commits \u2014 partial GAP-058 test diff preserved, worktrees re-created at 6f419a7, 2 fixup workers re-dispatched (see h3-sdk-go-foreman-2026-09-22-17-56-22.json)."
+}

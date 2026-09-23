@@ -1,0 +1,518 @@
+diff --git a/harness/harness_test.go b/harness/harness_test.go
+index f3c412b..b746f25 100644
+--- a/harness/harness_test.go
++++ b/harness/harness_test.go
+@@ -1727,16 +1727,61 @@ func TestUnknownRouteReturnsJSONNotFound(t *testing.T) {
+ // plain field on every OnResult, so N concurrent POST /v1/result calls would
+ // make the race detector report the TEST's own field instead of the production
+ // bug under test.
++// concurrentHarness backs TestConcurrentSameSessionRequestsNoRace. GAP-058
++// adaptation: OnProcess callers that arrive while `park` is armed wait on
++// `release`, and the release is fired by the setup goroutine's own admitted
++// result — so no burst process can complete between the setup process
++// (in-flight = "dec-race-proc") and the setup result. Every burst process
++// therefore records its decision while the id is already in flight, i.e.
++// pre-GAP-058 semantics (which the store still grants via the in-flight
++// match, HTTP 200) and post-GAP-058 semantics (admission + record stay
++// consistent) both yield the same turn count deterministically.
+ type concurrentHarness struct {
+ 	mu           sync.Mutex
+ 	processCalls int
+ 	resultCalls  int
++	park         bool
++	release      chan struct{}
++}
++
++func newConcurrentHarness() *concurrentHarness {
++	return &concurrentHarness{
++		park:    true,
++		release: make(chan struct{}),
++	}
++}
++
++// waitProcessCalls blocks until n OnProcess calls have arrived and taken
++// their park decision (both under mu, so a caller that is counted has
++// already decided to park).
++func (h *concurrentHarness) waitProcessCalls(n int) {
++	for {
++		h.mu.Lock()
++		got := h.processCalls
++		h.mu.Unlock()
++		if got >= n {
++			return
++		}
++		time.Sleep(100 * time.Microsecond)
++	}
++}
++
++// disarmPark lets future OnProcess calls through without parking. The parked
++// ones are freed when the setup result's admission closes release.
++func (h *concurrentHarness) disarmPark() {
++	h.mu.Lock()
++	h.park = false
++	h.mu.Unlock()
+ }
+ 
+ func (h *concurrentHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
+ 	h.mu.Lock()
+ 	h.processCalls++
++	park := h.park
+ 	h.mu.Unlock()
++	if park {
++		<-h.release
++	}
+ 	return &protocol.Decision{
+ 		Decision:   protocol.DecisionText,
+ 		DecisionID: "dec-race-proc",
+@@ -1748,14 +1793,11 @@ func (h *concurrentHarness) OnResult(req *protocol.ResultRequest) (*protocol.Dec
+ 	h.mu.Lock()
+ 	h.resultCalls++
+ 	h.mu.Unlock()
+-	// GAP-049 fixture adaptation: echo the decision_id the result was FOR back
+-	// as the next decision's id, so the id stays the session's in-flight
+-	// decision across iterations. Without this the first accepted result would
+-	// move CurrentDecisionID to a fixed id and every concurrent writer still
+-	// posting "dec-race-proc" would be rejected as already resolved — which is
+-	// the GAP-049 rule working, not the race under test. This test is about
+-	// the unlocked-read race (GAP-043) and must keep every writer's POST
+-	// landing, exactly as before.
++	// GAP-049 fixture adaptation (kept): echo the decision_id the result was
++	// FOR back as the next decision's id, so the id stays the session's
++	// in-flight decision across iterations and every writer's POST lands —
++	// which is what keeps this test about the unlocked-read race (GAP-043)
++	// rather than about admission semantics.
+ 	return &protocol.Decision{
+ 		Decision:   protocol.DecisionText,
+ 		DecisionID: req.DecisionID,
+@@ -1787,8 +1829,17 @@ func resultJSON(sid, decisionID string) string {
+ // goroutines concurrently issue POST /v1/result (locked writers) and
+ // GET /v1/sessions/{id} (unlocked readers) against that same session id.
+ // Pre-fix this fails with "WARNING: DATA RACE" against harness.go; post-fix it
+-// passes with 0 races. The final turn-count assertion also pins that the fix is
+-// behavior-preserving: every result POST must still land its increment.
++// passes with 0 races. The final turn-count assertion also pins that the fix
++// is behavior-preserving: every accepted delivery still lands exactly one
++// increment.
++//
++// Sequencing (GAP-058): the burst writers' first processes are parked until
++// the setup goroutine has completed its own process AND its own admitted
++// result (which fires the park). The burst therefore runs entirely against an
++// in-flight "dec-race-proc", so each burst process is recorded as a
++// continuation (one turn) and each burst result is admitted as the in-flight
++// id (one turn) — the same total the lenient pre-GAP-058 handler produced,
++// now proved through the atomic gate.
+ func TestConcurrentSameSessionRequestsNoRace(t *testing.T) {
+ 	const (
+ 		sessionID  = "sess-race-1"
+@@ -1797,13 +1848,12 @@ func TestConcurrentSameSessionRequestsNoRace(t *testing.T) {
+ 	)
+ 	writers := workers / 2
+ 
+-	srv := NewHTTPServer(&concurrentHarness{})
++	h := newConcurrentHarness()
++	srv := NewHTTPServer(h)
+ 	ts := httptest.NewServer(srv)
+ 	defer ts.Close()
+ 
+-	// Create the ONE shared session up front (turn_count becomes 1).
+-	postProcess(t, ts, sessionID)
+-
++	// Launch the burst first: every writer's first OnProcess parks.
+ 	var wg sync.WaitGroup
+ 	errCh := make(chan error, workers)
+ 	for i := 0; i < workers; i++ {
+@@ -1813,7 +1863,8 @@ func TestConcurrentSameSessionRequestsNoRace(t *testing.T) {
+ 			defer wg.Done()
+ 			for j := 0; j < iterations; j++ {
+ 				if i%2 == 0 {
+-					// Locked writer: update() mutates LastActive/TurnCount/
++					// Locked writer: admitResult + the post-OnResult
++					// update() mutate LastActive/TurnCount/
+ 					// CurrentDecisionID/CurrentDecisionType/Status.
+ 					resp, err := http.Post(ts.URL+"/v1/result", "application/json",
+ 						strings.NewReader(resultJSON(sessionID, "dec-race-proc")))
+@@ -1830,8 +1881,8 @@ func TestConcurrentSameSessionRequestsNoRace(t *testing.T) {
+ 					continue
+ 				}
+ 
+-				// Unlocked reader: getSessionHandler dereferences the raw
+-				// *sessionEntry returned by get().
++				// Unlocked reader: getSessionHandler dereferenced the raw
++				// *sessionEntry from get() pre-fix; snapshot() post-fix.
+ 				resp, err := http.Get(ts.URL + "/v1/sessions/" + sessionID)
+ 				if err != nil {
+ 					errCh <- fmt.Errorf("worker %d: GET /v1/sessions/%s: %w", i, sessionID, err)
+@@ -1846,19 +1897,34 @@ func TestConcurrentSameSessionRequestsNoRace(t *testing.T) {
+ 			}
+ 		}(i)
+ 	}
++
++	// Setup, in order: wait for every burst writer to have parked inside
++	// OnProcess, run the setup process (unparked — it must complete first),
++	// then the setup result. Its admission fires the parked burst, whose
++	// processes and results all then run against the in-flight burst id.
++	h.waitProcessCalls(writers)
++	h.disarmPark()
++	postProcess(t, ts, sessionID)
++	status, raw := postResult(t, ts, sessionID, "dec-race-proc", "tool_result")
++	if status != http.StatusOK {
++		t.Fatalf("setup POST /v1/result: expected 200, got %d (%s)", status, raw)
++	}
++
+ 	wg.Wait()
+ 	close(errCh)
+ 	for err := range errCh {
+ 		t.Error(err)
+ 	}
+ 
+-	// Behavior preservation: 1 turn from POST /v1/process + one increment per
+-	// concurrent POST /v1/result, status never leaves "active".
++	// Behavior preservation: one turn for the setup process, one for the
++	// setup result, one per burst process (each recorded as a continuation),
++	// one per burst result (each admitted as the in-flight id); status never
++	// leaves "active".
+ 	sr := getSession(t, ts, sessionID)
+ 	if sr.Status != protocol.SessionActive {
+ 		t.Errorf("expected status %q, got %q", protocol.SessionActive, sr.Status)
+ 	}
+-	if want := 1 + writers*iterations; sr.TurnCount != want {
++	if want := 2 + writers*iterations; sr.TurnCount != want {
+ 		t.Errorf("expected turn_count %d, got %d", want, sr.TurnCount)
+ 	}
+ }
+@@ -2237,3 +2303,335 @@ func TestHealthEndpoint_ConcurrentProbesNoRace(t *testing.T) {
+ 			shared.UptimeSeconds, shared.ActiveSessions)
+ 	}
+ }
++
++// ---------------------------------------------------------------------------
++// GAP-058 + GAP-059 — session lifecycle continuity and atomic result admission
++// ---------------------------------------------------------------------------
++
++// TestSessionLifecycle_ProcessDoesNotResetContinuingSession (GAP-059): a
++// second POST /v1/process on an EXISTING non-cancelled session must CONTINUE
++// it — turn_count 2, started_at unchanged — not recreate the entry. Pre-fix
++// processHandler called sessions.create() on every process, resetting
++// started_at to now and turn_count to 0 (+1) on each turn of a continuing
++// conversation, contradicting the documented status machine
++// (docs/verification/gap-051-session-status-machine.md).
++func TestSessionLifecycle_ProcessDoesNotResetContinuingSession(t *testing.T) {
++	m := newMockHarness()
++	srv := NewHTTPServer(m)
++	ts := httptest.NewServer(srv)
++	defer ts.Close()
++
++	const sid = "sess-gap059"
++	first := postProcess(t, ts, sid)
++	before := getSession(t, ts, sid)
++	if before.TurnCount != 1 {
++		t.Fatalf("expected turn_count 1 after the first process, got %d", before.TurnCount)
++	}
++
++	second := postProcess(t, ts, sid)
++
++	after := getSession(t, ts, sid)
++	if after.TurnCount != 2 {
++		t.Errorf("expected turn_count 2 after two processes, got %d — the second process reset the session lifecycle", after.TurnCount)
++	}
++	// started_at is compared on the wire (RFC3339): the pre-fix recreate
++	// stamps a fresh time.Now() on every process. The turn_count assertion
++	// above is the deterministic red half; this one pins the started_at half.
++	if after.StartedAt != before.StartedAt {
++		t.Errorf("started_at moved on the second process: %s -> %s — the session was recreated, not continued", before.StartedAt, after.StartedAt)
++	}
++	if second.DecisionID != first.DecisionID {
++		t.Errorf("expected the same canned decision %q from both processes, got %q", first.DecisionID, second.DecisionID)
++	}
++	if after.Status != protocol.SessionActive {
++		t.Errorf("expected status %q, got %q", protocol.SessionActive, after.Status)
++	}
++}
++
++// TestSessionLifecycle_StartedAtPreservedAcrossProcesses (GAP-059, exact
++// half): the RFC3339 comparison above can mask a sub-second recreate, so this
++// twin asserts the exact instant by polling GET within the same second —
++// started_at more than one second old after the second process means the
++// entry was recreated (the pre-fix create() stamps a fresh time.Now()).
++func TestSessionLifecycle_StartedAtPreservedAcrossProcesses(t *testing.T) {
++	m := newMockHarness()
++	srv := NewHTTPServer(m)
++	ts := httptest.NewServer(srv)
++	defer ts.Close()
++
++	const sid = "sess-gap059-startedat"
++	postProcess(t, ts, sid)
++
++	// Once the session exists, started_at must never move again. Sleep past
++	// any sub-second recreate granularity, then process again and check age.
++	time.Sleep(1100 * time.Millisecond)
++	postProcess(t, ts, sid)
++
++	sr := getSession(t, ts, sid)
++	startedAt, err := time.Parse(time.RFC3339, sr.StartedAt)
++	if err != nil {
++		t.Fatalf("parse started_at %q: %v", sr.StartedAt, err)
++	}
++	if age := time.Since(startedAt); age > time.Second {
++		t.Errorf("started_at is only %s old after the second process — the session was recreated with a fresh timestamp instead of continued", age.Round(time.Millisecond))
++	}
++}
++
++// gatedResultHarness lets the admitted result INTO OnResult and holds it
++// there until the test closes `release`. GAP-058 uses it to make the
++// check-then-act admission window observable: pre-fix, duplicates that reach
++// their snapshot admission while the first delivery sits parked inside
++// OnResult all pass (its idempotency record has not landed yet) and park too,
++// so `calls` climbs toward `workers`; post-fix, admission is atomic under the
++// store write lock, so the duplicates are refused while the first is parked
++// and the rejections complete independently of the gate.
++type gatedResultHarness struct {
++	mu      sync.Mutex
++	calls   int
++	release chan struct{}
++}
++
++func newGatedResultHarness() *gatedResultHarness {
++	return &gatedResultHarness{
++		release: make(chan struct{}),
++	}
++}
++
++func (h *gatedResultHarness) snapshotCalls() int {
++	h.mu.Lock()
++	defer h.mu.Unlock()
++	return h.calls
++}
++
++func (h *gatedResultHarness) OnProcess(req *protocol.ProcessRequest) (*protocol.Decision, error) {
++	return &protocol.Decision{
++		Decision:   protocol.DecisionText,
++		DecisionID: "dec-gated-proc",
++		Text:       &protocol.TextResp{Content: "thinking...", Finished: false},
++	}, nil
++}
++
++func (h *gatedResultHarness) OnResult(req *protocol.ResultRequest) (*protocol.Decision, error) {
++	h.mu.Lock()
++	h.calls++
++	h.mu.Unlock()
++	<-h.release
++	return &protocol.Decision{
++		Decision:   protocol.DecisionText,
++		DecisionID: "dec-gated-next",
++		Text:       &protocol.TextResp{Content: "applied once", Finished: true},
++	}, nil
++}
++
++func (h *gatedResultHarness) OnCancel(req *protocol.CancelRequest) error { return nil }
++
++func (h *gatedResultHarness) OnSessionTerminate(sessionID string) error { return nil }
++
++func (h *gatedResultHarness) Health() *protocol.HealthResponse {
++	return &protocol.HealthResponse{
++		Status:          protocol.HealthOK,
++		Version:         "1.0.0",
++		Transport:       "rest",
++		ProtocolVersion: "1.0",
++	}
++}
++
++// TestResultEndpoint_ConcurrentDuplicateAdmittedOnce (GAP-058): N>=8
++// concurrent deliveries of the SAME in-flight decision_id must produce
++// exactly one 200, the rest 400 "already been resolved", OnResult exactly
++// once, and exactly one recorded turn. Pre-fix the admission check
++// (snapshot, RLock) and the idempotency record (update, write lock) were two
++// critical sections around OnResult, so duplicates arriving while the first
++// delivery is inside OnResult all pass the check — each drove the harness.
++// The gated harness pins that window deterministically: the first admitted
++// delivery parks inside OnResult and every duplicate either passes its check
++// while it is parked (pre-fix: admitted, parked, counted) or is refused
++// atomically (post-fix: 400 without touching the harness).
++// Run under `go test -race -count=1 ./harness/`.
++func TestResultEndpoint_ConcurrentDuplicateAdmittedOnce(t *testing.T) {
++	gh := newGatedResultHarness()
++	srv := NewHTTPServer(gh)
++	ts := httptest.NewServer(srv)
++	defer ts.Close()
++
++	const (
++		sid     = "sess-gap058-race"
++		workers = 12 // >= 8 by acceptance criteria
++	)
++	d1 := postProcess(t, ts, sid)
++	if d1.DecisionID == "" {
++		t.Fatal("POST /v1/process returned an empty decision_id; cannot correlate")
++	}
++
++	type delivery struct {
++		status int
++		body   []byte
++	}
++	deliveries := make(chan delivery, workers)
++	errCh := make(chan error, workers)
++	var wg sync.WaitGroup
++	for i := 0; i < workers; i++ {
++		wg.Add(1)
++		//nolint:gosec // loop var is captured by value via the parameter.
++		go func(i int) {
++			defer wg.Done()
++			resp, err := http.Post(ts.URL+"/v1/result", "application/json",
++				strings.NewReader(resultJSON(sid, d1.DecisionID)))
++			if err != nil {
++				errCh <- fmt.Errorf("worker %d: POST /v1/result: %w", i, err)
++				return
++			}
++			defer func() { _ = resp.Body.Close() }()
++			raw, err := io.ReadAll(resp.Body)
++			if err != nil {
++				errCh <- fmt.Errorf("worker %d: read POST /v1/result body: %w", i, err)
++				return
++			}
++			deliveries <- delivery{status: resp.StatusCode, body: raw}
++		}(i)
++	}
++
++	// Release the gate only once every delivery has reached a verdict
++	// independent of it: workers-1 refusations (the atomic-admission path)
++	// or `workers` OnResult entries (the pre-fix admitted-through-the-window
++	// path). Waiting for either keeps this deterministic in both worlds —
++	// releasing on the first entry alone would let late duplicates race past
++	// a window that has already closed.
++	tally := make([]delivery, 0, workers)
++	rejected := 0
++	accepted := 0
++	deadline := time.After(10 * time.Second)
++	for gh.snapshotCalls()+rejected < workers {
++		select {
++		case del := <-deliveries:
++			tally = append(tally, del)
++			if del.status == http.StatusBadRequest {
++				rejected++
++			}
++		case <-deadline:
++			close(gh.release)
++			t.Fatal("duplicate deliveries neither resolved nor admitted; admission state inconclusive")
++		default:
++			time.Sleep(100 * time.Microsecond)
++		}
++	}
++	close(gh.release)
++
++	wg.Wait()
++	close(deliveries)
++	close(errCh)
++	for err := range errCh {
++		t.Error(err)
++	}
++	for del := range deliveries {
++		tally = append(tally, del)
++	}
++
++	accepted, rejected = 0, 0
++	for _, del := range tally {
++		switch del.status {
++		case http.StatusOK:
++			accepted++
++		case http.StatusBadRequest:
++			rejected++
++			var errResp protocol.ErrorResponse
++			if err := json.Unmarshal(del.body, &errResp); err != nil {
++				t.Errorf("decode duplicate-rejection body: %v", err)
++			} else if !strings.Contains(errResp.Error.Message, "already been resolved") {
++				t.Errorf("expected 'already been resolved' in the rejection, got %q", errResp.Error.Message)
++			}
++		default:
++			t.Errorf("duplicate delivery got unexpected status %d", del.status)
++		}
++	}
++	if accepted != 1 {
++		t.Errorf("expected exactly 1 accepted (200) delivery, got %d — concurrent duplicates both drove the harness", accepted)
++	}
++	if rejected != workers-1 {
++		t.Errorf("expected %d rejected (400) deliveries, got %d", workers-1, rejected)
++	}
++	if calls := gh.snapshotCalls(); calls != 1 {
++		t.Errorf("expected the OnResult side effect exactly once, got %d", calls)
++	}
++
++	// One turn for the process + ONE for the single admitted result: the
++	// admission bump belongs to the one accepted delivery, not to each
++	// duplicate, and no second bump may run after OnResult.
++	sr := getSession(t, ts, sid)
++	if sr.TurnCount != 2 {
++		t.Errorf("expected turn_count 2 (process + one admitted result), got %d", sr.TurnCount)
++	}
++	if sr.CurrentDecision != "dec-gated-next" {
++		t.Errorf("expected current_decision dec-gated-next, got %q", sr.CurrentDecision)
++	}
++}
++
++// TestResultEndpoint_SequentialReplayUnchanged (GAP-049 over the GAP-058
++// gate): moving admission under the store write lock must not move the
++// sequential contract — the retry of the just-resolved id is still 400
++// "already been resolved", an invented id is still 400 "does not match the
++// session's in-flight decision", and neither reaches OnResult nor touches
++// session state.
++func TestResultEndpoint_SequentialReplayUnchanged(t *testing.T) {
++	m := newMockHarness()
++	m.onResultDec = &protocol.Decision{
++		Decision:   protocol.DecisionText,
++		DecisionID: "dec-seq-002",
++		Text:       &protocol.TextResp{Content: "applied once", Finished: true},
++	}
++	srv := NewHTTPServer(m)
++	ts := httptest.NewServer(srv)
++	defer ts.Close()
++
++	const sid = "sess-gap058-seq"
++	d1 := postProcess(t, ts, sid)
++	if d1.DecisionID == "" {
++		t.Fatal("POST /v1/process returned an empty decision_id; cannot correlate")
++	}
++
++	// 1. First delivery — accepted, the harness runs once.
++	status, raw := postResult(t, ts, sid, d1.DecisionID, "tool_result")
++	if status != http.StatusOK {
++		t.Fatalf("first delivery: expected 200, got %d (%s)", status, raw)
++	}
++
++	// 2. Retry of the just-resolved id — 400 "already been resolved".
++	status, raw = postResult(t, ts, sid, d1.DecisionID, "tool_result")
++	if status != http.StatusBadRequest {
++		t.Fatalf("replayed delivery: expected 400, got %d (%s)", status, raw)
++	}
++	var errResp protocol.ErrorResponse
++	if err := json.Unmarshal(raw, &errResp); err != nil {
++		t.Fatalf("decode replay error response: %v", err)
++	}
++	if !strings.Contains(errResp.Error.Message, "already been resolved") {
++		t.Errorf("expected 'already been resolved' in message, got %q", errResp.Error.Message)
++	}
++
++	// 3. Invented id — 400 "does not match", naming the in-flight decision.
++	status, raw = postResult(t, ts, sid, "dec-seq-invented", "tool_result")
++	if status != http.StatusBadRequest {
++		t.Fatalf("invented delivery: expected 400, got %d (%s)", status, raw)
++	}
++	if err := json.Unmarshal(raw, &errResp); err != nil {
++		t.Fatalf("decode invented error response: %v", err)
++	}
++	if !strings.Contains(errResp.Error.Message, "does not match the session's in-flight decision") {
++		t.Errorf("expected mismatch message, got %q", errResp.Error.Message)
++	}
++	if !strings.Contains(errResp.Error.Message, "dec-seq-002") {
++		t.Errorf("expected the in-flight decision id to be named, got %q", errResp.Error.Message)
++	}
++
++	// Neither refused delivery drove the harness or counted as a turn.
++	if m.resultCalls != 1 {
++		t.Errorf("expected OnResult to have run exactly once, got %d", m.resultCalls)
++	}
++	sr := getSession(t, ts, sid)
++	if sr.TurnCount != 2 {
++		t.Errorf("expected turn_count 2 (process + accepted result), got %d", sr.TurnCount)
++	}
++	if sr.CurrentDecision != "dec-seq-002" {
++		t.Errorf("expected current_decision dec-seq-002, got %q", sr.CurrentDecision)
++	}
++}

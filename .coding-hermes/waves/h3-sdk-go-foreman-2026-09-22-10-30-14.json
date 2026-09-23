@@ -1,0 +1,64 @@
+{
+  "tick_id": "h3-sdk-go-foreman-2026-09-22-10-30-14",
+  "tick_number": 262,
+  "created_at": "2026-09-22T10:45:00-05:00",
+  "project": "h3-sdk-go",
+  "workdir": "/home/kara/get-h3/sdk-go",
+  "recovery": {
+    "recovered_wave_tick": "h3-sdk-go-foreman-2026-09-20-18-47-55",
+    "result": "NO-OP \u2014 all 3 workers (GAP-053, GAP-051, README-CONSUMER covering DF-3/5/7/10) were already merged by tick #261 itself; branches deleted post-merge, worktrees reaped, board rows complete, judge verdicts recorded. Manifest closed with finished_at + recovery_result.",
+    "action_taken": "verify-only"
+  },
+  "budget": 5,
+  "workers": [
+    {
+      "task_id": "GAP-058",
+      "tasks_covered": [
+        "GAP-058",
+        "GAP-059"
+      ],
+      "why_combined": "Both P1s live in harness/harness.go processHandler/resultHandler \u2014 same file, not independently mergeable.",
+      "worktree": "/home/kara/worktrees/sdk-go-GAP-058",
+      "branch": "wt/GAP-058",
+      "base_sha": "da220e0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t262_brief_gap058059.md"
+    },
+    {
+      "task_id": "GAP-061",
+      "worktree": "/home/kara/worktrees/sdk-go-GAP-061",
+      "branch": "wt/GAP-061",
+      "base_sha": "da220e0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t262_brief_gap061.md"
+    },
+    {
+      "task_id": "GAP-062",
+      "worktree": "/home/kara/worktrees/sdk-go-README-ECHO",
+      "branch": "wt/README-ECHO",
+      "base_sha": "da220e0",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "brief": "/tmp/h3sdkgo_t262_brief_readme.md"
+    }
+  ],
+  "premise_checks_2026_09_22": {
+    "GAP-058": "confirmed \u2014 admission via snapshot() at harness.go:387-402, recording at :407-451, no atomicity",
+    "GAP-059": "confirmed \u2014 create() overwrites entry (StartedAt/TurnCount reset) at harness.go:67-79 via unconditional call at :302-308",
+    "GAP-061": "confirmed \u2014 ResultRequest.Validate (validate.go:74-85) has presence-only checks, no enum/success validation",
+    "GAP-062": "confirmed \u2014 README.md:164/176/187 hardcode decision_id echo-001; server auto-generates UUIDs at harness.go:317-319"
+  },
+  "lane_probe": "LANE_OK glm-5.3-flash@zai-glm 20260922_053719_629432",
+  "independence_check": "Worker 1 = harness/harness.go + harness_test.go; Worker 2 = protocol/validate.go (+types.go); Worker 3 = README.md + docs/. Disjoint file sets; rows GAP-058..062 have no depends_on edges. Merge order: GAP-061 (protocol), GAP-058/059 (harness), README-ECHO (docs), then board bookkeeping. Full gate battery re-run after EACH merge; h3-test battery + smoke on the final merged tree only.",
+  "merge_order": [
+    "GAP-061",
+    "GAP-058",
+    "README-ECHO",
+    "board bookkeeping"
+  ],
+  "merge_note": "Serial --no-ff merges, gate after each. Smoke/h3-test battery only on final tree (port 9191 discipline). Worker 3 probes on :9295, worker 1 owns smoke_echo on :9191.",
+  "finished_at": "2026-09-22T11:16:00-05:00",
+  "recovery_result": "Wave DID NOT land: all 3 workers died at dispatch (~05:44) with 'every provider in the fallback chain kept failing over'; branches at base da220e0, zero commits. Recovered by tick h3-sdk-go-foreman-2026-09-22-16-01-13 (#263): partial GAP-058 diff preserved, worktrees/branches re-created fresh, same 3 tasks re-dispatched. See waves/h3-sdk-go-foreman-2026-09-22-16-01-13.json."
+}

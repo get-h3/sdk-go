@@ -6,6 +6,8 @@
 .vfs/graph/graph.db
 .vfs/graph/graph.db.wal
 .vfs/graph/.last_warm
+.vfs/graph/.last_reconcile
+.vfs/graph/.parse_cache.json
 
 # IDE
 .idea/
@@ -45,3 +47,4 @@ dagger.db*
 .gitreins/history/
 .gitreins/usage.jsonl
 .gitreins/logs/
+.gitreins/tasks.yaml.lock

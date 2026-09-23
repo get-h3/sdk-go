@@ -1,0 +1,144 @@
+diff --git a/harness/harness.go b/harness/harness.go
+index 3a88c27..d873000 100644
+--- a/harness/harness.go
++++ b/harness/harness.go
+@@ -48,7 +48,9 @@ type sessionEntry struct {
+ 	// POST /v1/result. CurrentDecisionID already holds the in-flight decision,
+ 	// so this second id is what makes a RETRY distinguishable from a stale or
+ 	// invented id: req.DecisionID == LastResultDecisionID (and != in-flight)
+-	// means the result for that decision was already applied (GAP-049).
++	// means the result for that decision was already applied (GAP-049). It is
++	// written only by admitResult, inside the same write-locked critical
++	// section that admits the id (GAP-058) — never by a later unlocked update.
+ 	LastResultDecisionID string
+ }
+ 
+@@ -128,6 +130,87 @@ func (s *sessionStore) count() int {
+ 	return len(s.sessions)
+ }
+ 
++// admitRejection classifies why admitResult refused a delivery. The zero
++// value is admitAccepted, so a caller can switch on the returned class and
++// fall through to the harness callback only on admitAccepted.
++type admitRejection int
++
++const (
++	// admitAccepted: the id passed the GAP-049 comparison and has been
++	// recorded — the caller may run OnResult.
++	admitAccepted admitRejection = iota
++	// admitAlreadyResolved: the id equals the last resolved id — a retry of
++	// an already-applied result (GAP-049's idempotency guard).
++	admitAlreadyResolved
++	// admitMismatch: a decision is in flight and the id is neither that
++	// decision nor a replay of the resolved one — invented or long-stale.
++	admitMismatch
++	// admitUnknownSession: the session is not in the store.
++	admitUnknownSession
++)
++
++// admitResult is the GAP-049 admission gate made atomic (GAP-058): the full id
++// comparison AND, on admit, the recording of the accepted id plus the
++// LastActive/TurnCount bump happen inside ONE write-locked critical section —
++// before the harness callback runs. The previous shape compared ids via
++// snapshot() (RLock) and recorded the accepted id in a separate update() after
++// OnResult, so two concurrent deliveries of the same decision_id could both
++// pass the check and both drive the callback — a double side effect the retry
++// guard exists to prevent.
++//
++// The rule, when a decision IS in flight (CurrentDecisionID != ""):
++//
++//   - decision_id == in-flight            -> admit (the normal path);
++//   - decision_id == last resolved id     -> admitAlreadyResolved;
++//   - anything else                       -> admitMismatch.
++//
++// When NO decision is in flight (CurrentDecisionID == "", e.g. the session was
++// created and the harness has not answered yet) the result is admitted: there
++// is nothing to correlate against, and rejecting it would break the permissive
++// contract for a session with no outstanding work (GAP-049).
++//
++// One deliberate collision ruling: inside the OnResult window the in-flight id
++// and the last resolved id can be the SAME id — the admitted result recorded
++// it as resolved while the loop has not yet recorded the decision OnResult
++// returned. That single id cannot be both "in flight" and "already applied",
++// and the in-flight match wins: a delivery racing the callback through that
++// window is admitted exactly as the pre-GAP-058 code admitted it. For a
++// harness whose returned decision id is always distinct from the delivered one
++// (the documented loop shape) the window is one callback wide, and a
++// re-delivery of the id the session just resolved classifies as
++// admitAlreadyResolved.
++//
++// An admitted delivery whose callback then fails is still resolved: the id was
++// consumed at admission, so a retry is answered "already been resolved"
++// instead of re-running the harness side effect.
++//
++// GAP-028: cancelled is terminal. A cancelled session's delivery is still
++// admitted (harness callbacks are permissive) but the entry is left untouched
++// — no turn bump, no recorded id — so a late result can neither resurrect the
++// lifecycle nor make a later retry compare against state the cancel froze.
++func (s *sessionStore) admitResult(sessionID, decisionID string) admitRejection {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	entry, ok := s.sessions[sessionID]
++	if !ok {
++		return admitUnknownSession
++	}
++	switch {
++	case entry.CurrentDecisionID != "" &&
++		decisionID == entry.LastResultDecisionID &&
++		decisionID != entry.CurrentDecisionID:
++		return admitAlreadyResolved
++	case entry.CurrentDecisionID != "" && decisionID != entry.CurrentDecisionID:
++		return admitMismatch
++	}
++	if entry.Status != "cancelled" {
++		entry.LastActive = time.Now()
++		entry.TurnCount++
++		entry.LastResultDecisionID = decisionID
++	}
++	return admitAccepted
++}
++
+ // server holds the harness and session store for HTTP handlers.
+ type server struct {
+ 	harness  Harness
+@@ -293,15 +376,33 @@ func (s *server) processHandler(w http.ResponseWriter, r *http.Request) {
+ 		return
+ 	}
+ 
+-	// Track session — GAP-028: cancelled is terminal. A late POST /v1/process
+-	// for an already-cancelled session must not overwrite the entry or
+-	// increment turn_count. Harness callbacks still run (permissive).
+-	// GAP-043: read the status through snapshot() — a raw *sessionEntry from
+-	// get() would be read without the store lock while concurrent requests
+-	// mutate the same entry under it.
+-	if entry, ok := s.sessions.snapshot(req.SessionID); !ok || entry.Status != "cancelled" {
++	// Track session — GAP-059: create-or-update. The previous shape recreated
++	// the entry on EVERY process (create() overwrites the map slot), so an
++	// existing active/completed session had started_at reset to now and
++	// turn_count reset to 1 on each new user message — contradicting the
++	// documented status machine
++	// (docs/verification/gap-051-session-status-machine.md), where started_at
++	// is fixed at creation and turn_count only grows. Now create() runs only
++	// for genuinely new sessions; an existing non-cancelled session keeps its
++	// lifecycle and gets only the LastActive/TurnCount bump via update().
++	// GAP-028: cancelled is terminal — a late POST /v1/process for an
++	// already-cancelled session must not resurrect the entry or increment
++	// turn_count. Harness callbacks still run (permissive).
++	// GAP-043: the branch decision reads through snapshot(); the mutation goes
++	// through update() under the store write lock — never a raw *sessionEntry
++	// from get().
++	entry, ok := s.sessions.snapshot(req.SessionID)
++	switch {
++	case !ok:
+ 		s.sessions.create(req.SessionID)
++	case entry.Status != "cancelled":
+ 		s.sessions.update(req.SessionID, func(e *sessionEntry) {
++			// Re-check under the write lock: a cancel that landed between the
++			// snapshot and this update must not have its turn counted
++			// (GAP-028).
++			if e.Status == "cancelled" {
++				return
++			}
+ 			e.LastActive = time.Now()
+ 			e.TurnCount++
+ 		})
