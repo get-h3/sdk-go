@@ -107,8 +107,16 @@ jobs:
         id: tag
         working-directory: sdk-go
         run: |
-          if [ -n "${{ github.event.client_payload.version }}" ]; then
-            TAG="v${{ github.event.client_payload.version }}"
+          # A protocol-update dispatch carries client_payload.protocol_version (the key the
+          # other SDKs read); client_payload.version is accepted for backwards compatibility.
+          # Neither present (plain workflow_dispatch, or the first dispatch batch of a release
+          # that shipped no payload) falls back to the date tag.
+          PAYLOAD_VERSION="${{ github.event.client_payload.protocol_version }}"
+          if [ -z "${PAYLOAD_VERSION}" ]; then
+            PAYLOAD_VERSION="${{ github.event.client_payload.version }}"
+          fi
+          if [ -n "${PAYLOAD_VERSION}" ]; then
+            TAG="v${PAYLOAD_VERSION#v}"
           else
             TAG="v$(date +'%Y.%m.%d')-sync"
           fi
@@ -120,8 +128,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.tag.outputs.tag }}" -m "Sync protocol schemas — ${{ steps.tag.outputs.tag }}"
-          git push origin "${{ steps.tag.outputs.tag }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          # Idempotent: a protocol release is dispatched twice (first batch without a payload,
+          # second with protocol_version), so this step can run again for a tag it already
+          # created. `git tag` exits 128 on an existing tag, which would fail the job and
+          # starve the roundtrip job that `needs:` this one.
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists — skipping (idempotent re-run)."
+          else
+            git tag -a "${TAG}" -m "Sync protocol schemas — ${TAG}"
+            git push origin "${TAG}"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
