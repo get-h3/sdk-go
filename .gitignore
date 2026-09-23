@@ -48,3 +48,4 @@ dagger.db*
 .gitreins/usage.jsonl
 .gitreins/logs/
 .gitreins/tasks.yaml.lock
+.gitreins/tasks.yaml.lock
