@@ -49,3 +49,4 @@ dagger.db*
 .gitreins/logs/
 .gitreins/tasks.yaml.lock
 .gitreins/tasks.yaml.lock
+namespaces/
