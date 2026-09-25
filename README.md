@@ -9,7 +9,19 @@ Go SDK for building [H3](https://github.com/get-h3/h3)-compliant agent harnesses
 ## Install
 
 Requires a Go toolchain — **1.22+**, matching the badge above. If you do not have
-one yet, install it first: <https://go.dev/dl/>.
+one yet, install it first: <https://go.dev/dl/> (this address redirects to
+dl.google.com — same download, just a longer URL).
+
+Check what you have — this must print a **go1.22** toolchain or newer:
+
+```bash
+go version
+# e.g. go version go1.23.4 linux/amd64
+```
+
+The toolchain number in the output (`go1.<minor>…`) must be **1.22 or higher**;
+if it prints `go1.21` or older — or `command not found` — install/upgrade before
+`go get`.
 
 ```bash
 go get github.com/get-h3/sdk-go
@@ -270,7 +282,9 @@ Where you build an example from decides whether it needs its own module:
   go build .                          # exit 0
   ```
 
-Either path needs a Go toolchain ([1.22+](https://go.dev/dl/)) installed first.
+Either path needs a Go toolchain (**1.22+** — check with `go version`; you need a
+**go1.22** toolchain or newer) installed first: <https://go.dev/dl/> — that address
+redirects to dl.google.com, it is the same Go download.
 
 ## Documentation
 
