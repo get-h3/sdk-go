@@ -107,20 +107,18 @@ jobs:
         id: tag
         working-directory: sdk-go
         run: |
-          # SDKGO-CI-004 (finding, NOT fixed here): the 09-23 protocol dispatch carried
-          # client_payload.protocol_version (sibling SDKs read that key — sdk-python's run
-          # 35855671172 logged PROTOCOL_VERSION=v1.1.0), while this step reads
-          # client_payload.version, which no producer sends. Do NOT "fix" that by tagging
-          # the protocol version here: sdk-go is a Go MODULE, so a tag vX.Y.Z is a published
-          # module version, and the SDK's own release line is v0.1.x — a protocol tag would
-          # claim an API stability this module never released. The date tag is the sync
-          # provenance tag; the dispatched protocol ref is recorded in the release notes
-          # below. Deciding the sync-tag namespace belongs to SDKGO-CI-004.
-          if [ -n "${{ github.event.client_payload.version }}" ]; then
-            TAG="v${{ github.event.client_payload.version }}"
-          else
-            TAG="v$(date +'%Y.%m.%d')-sync"
-          fi
+          # SDKGO-CI-004 (DECIDED 2026-10-08): the sync tag namespace is the
+          # DATE-PROVENANCE scheme. Every protocol sync is tagged
+          # v<date>-sync, unconditionally.
+          #
+          # Why not a protocol-version tag: (1) the protocol repo's release.yml
+          # dispatches carry NO client_payload at all (verified 2026-10-08), so
+          # a payload.version branch is dead code; (2) sdk-go is a Go MODULE —
+          # a tag vX.Y.Z is a published module version, and the SDK's own
+          # release line is v0.1.x. Tagging a protocol version would claim an
+          # API stability this module never released. The dispatched protocol
+          # ref is recorded in the release notes below instead.
+          TAG="v$(date +'%Y.%m.%d')-sync"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "Tag: ${TAG}"
 

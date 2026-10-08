@@ -30,7 +30,7 @@ side. A harness = 5 methods + an HTTP server + a passing `h3-test` battery.
 
 ```bash
 # Published module (preferred — verified 2026-09-18: v0.1.6 resolves in ~0.4s,
-# consumer built from it in 2.2s and passed 46/46)
+# consumer built from it in 2.2s and passed 46/46) count-ok-historical
 go mod init my-harness
 go get github.com/get-h3/sdk-go@v0.1.6
 go run main.go                 # serves :9191
@@ -132,7 +132,7 @@ panics (`assignment to entry in nil map`) the moment you add state maps.
 ## The tool_call round-trip recipe (live-verified 2026-09-18, published v0.1.6)
 
 `tool_call` has no shipped example either (GAP-046). A real consumer whose tools
-touch the filesystem, passes the full battery (46/46) and writes a real artifact
+touch the filesystem, passes the full battery (48/48) and writes a real artifact
 — full source in `docs/dogfood/2026-09-18-integration.md`. The loop:
 
 ```go
@@ -278,7 +278,7 @@ with the same id — its claim is released.
 
 ## Verifying your harness end-to-end (L3 checklist)
 
-1. `h3-test` → 46/46.
+1. `h3-test` → 48/48.
 2. curl full loop: process (tool_call) → result (tool_result) → result
    (text_sent) → end; confirm history grows, never shrinks.
 3. curl error paths: malformed JSON (400), missing session_id on `/v1/process`

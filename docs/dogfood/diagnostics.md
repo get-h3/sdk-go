@@ -261,7 +261,7 @@ Boarded as SKIPPED-install-bunker with the infra signature.
 **Verdict: SHIPPABLE.** Consumer `sentry` (repo triage: `tool_call git_log` →
 `tool_result` → `tool_call file_stats` → `tool_result` → writes
 `TRIAGE-REPORT.md` → `end`) driven by a scripted Hermes that really shells out;
-battery **46/46** against it; clean-room install on Go 1.22.12 in **20s**;
+battery **46/46** against it count-ok-historical; clean-room install on Go 1.22.12 in **20s**;
 README curl quickstart reproduced verbatim. Full report:
 [`2026-09-18-integration.md`](2026-09-18-integration.md).
 
@@ -344,7 +344,7 @@ documented URL (`2bda31c`), `go build ./...` (8.4s), `make all` (verify-counts �
 fmt · vet · build · test-short), `make test` (130 tests green at `2bda31c` — count-ok-historical),
 `go list -m all` → the module alone, **no `go.sum`** (the "zero external
 dependencies" claim, verified), then `examples/echo` on :9191 and the README
-curl sequence reproduced verbatim, battery 46/46 (0.22s). **INSTALL_SECONDS=20.**
+curl sequence reproduced verbatim, battery 46/46 (0.22s) count-ok-historical. **INSTALL_SECONDS=20.**
 
 **Environment artifact, not a project defect:** `docker exec … bash -lc` inside
 the official Go image drops `/usr/local/go/bin` from `PATH`, so `go build` is

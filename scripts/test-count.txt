@@ -8,5 +8,5 @@
 #           that checkout is present.
 # suite   = this repo's own Go test suite, as counted by
 #           `go test ./... -list '^Test'`.
-battery=46
+battery=48
 suite=169

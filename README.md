@@ -43,7 +43,7 @@ import (
 )
 
 // EchoHarness implements all 5 Harness methods and is H3-compliant
-// (passes the full h3-test battery, 46/46).
+// (passes the full h3-test battery, 48/48).
 type EchoHarness struct {
     mu            sync.Mutex
     responseCount int
@@ -231,7 +231,7 @@ address you pass to `http.ListenAndServe`, and `harness.Serve(addr, h)` reports 
 collision with a hint naming the `PORT` override instead of a bare
 `address already in use`.
 
-## Verify compliance (46/46)
+## Verify compliance (48/48)
 
 The quickstart harness above is the compliance reference — [`examples/echo`](./examples/echo/)
 is the same logic. To reproduce the number yourself, install the battery and run it
@@ -239,7 +239,7 @@ against the live endpoint:
 
 ```bash
 pip install git+https://github.com/get-h3/shim   # provides the `h3-test` CLI
-h3-test --endpoint http://127.0.0.1:9191         # -> TOTAL 46/46 PASSED, exit 0
+h3-test --endpoint http://127.0.0.1:9191         # -> TOTAL 48/48 PASSED, exit 0
 ```
 
 The battery is black-box (HTTP only), so the same command validates a harness built

@@ -159,7 +159,7 @@ library. The same listener passes the battery:
 
 ```bash
 PORT=9291 go run ./examples/llm-roundtrip/ &
-h3-test --endpoint http://127.0.0.1:9291     # 46/46 PASSED
+h3-test --endpoint http://127.0.0.1:9291     # 48/48 PASSED
 ```
 
 **Use when:** your harness wants Hermes' model to do the thinking — drafting,

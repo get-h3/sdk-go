@@ -56,7 +56,7 @@ go get github.com/get-h3/sdk-go
 
 Create `main.go`. The full reference harness below is the **compliance reference** —
 it is the same logic that ships in `examples/echo` and the README quickstart, and it
-passes the complete 46/46 battery. Copy it verbatim, then read the anatomy notes
+passes the complete 48/48 battery. Copy it verbatim, then read the anatomy notes
 underneath.
 
 ```go
@@ -74,7 +74,7 @@ import (
 )
 
 // EchoHarness implements all 5 methods of harness.Harness and is H3-compliant
-// (passes the full h3-test battery, 46/46).
+// (passes the full h3-test battery, 48/48).
 type EchoHarness struct {
     mu            sync.Mutex
     responseCount int
@@ -357,7 +357,7 @@ Expected output tail — all six categories green:
   Result Handling                     7/7  ✅ PASSED
   Error & Edge Cases                  13/13  ✅ PASSED
   Stress & Performance                5/5  ✅ PASSED
-  TOTAL                               46/46  PASSED
+  TOTAL                               48/48  PASSED
 ```
 
 Exit code `0` means compliant (exact banner/format may vary slightly between shim
