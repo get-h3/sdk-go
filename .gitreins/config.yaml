@@ -11,6 +11,10 @@ guards:
   test_timeout: 120
   dead_code: false
   skylos: false
+  # TRUST-001: accept zero-work DEGRADED PASS (exit 0) — board-only/docs-only
+  # commits stage no Go files, so every go_* gate legitimately skips; exit 2
+  # must mean an actually-failed gate, not "nothing to gate" (SDKGO-CI-005).
+  allow_skips: true
 
 pipeline:
   stages:
